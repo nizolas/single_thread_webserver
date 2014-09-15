@@ -28,7 +28,7 @@ int clientlen = sizeof(client);
 int portset=0;
 char buffer[512];
 string command, filepath, htp, line, configHTP, localDir;
-bool correctCommand = false, correctSlash = false, fileExists = false, correctHTP = false;
+bool correctCommand = false, correctSlash = false, fileExists = false, correctHTP = false, correctExtension = false;
 vector<string> extensions;
 
 void getConfigFile()
@@ -151,6 +151,21 @@ int main(){
 				queryFile.close();
 				fileExists = true;
 				cout << "File exists" <<endl;
+				
+				int i;
+				for(i=0; i< extensions.size();i++)
+				{
+					if(filepath.substr(filepath.find(".")+1).compare(extensions[i])==0){
+						correctExtension = true;
+						cout << "The file extension is supported" << endl;
+					}
+					if(i == extensions.size()-1 and !correctExtension)
+					{
+						cout << "The file extension is not supported" << endl;
+						char *message = "403\n";
+						send(c,message,sizeof(message),0);
+					}
+				}
 			}
 			else
 			{
@@ -160,7 +175,7 @@ int main(){
 				send(c,message,sizeof(message),0);
 			}
 		}
-		if(fileExists)
+		if(fileExists and correctExtension)
 		{
 			if(configHTP.compare(htp)==0)
 			{
