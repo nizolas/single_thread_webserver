@@ -1,4 +1,4 @@
-//Some libraries that might be helpful
+//Some libraries that might be helpful 
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -10,7 +10,7 @@
 #include <strings.h>
 #include <unistd.h>
 #include <sys/stat.h>
- 
+
 //These ones might be nice if you feel like using C++
 #include <string>
 #include <iostream>
@@ -23,12 +23,12 @@ using namespace std;
 
 int c,s,port, byte;
 struct sockaddr_in server, client;
-char *ipaddress = "141.117.57.41";
+char *ipaddress = "141.117.57.40";
 int clientlen = sizeof(client);
 int portset=0;
 char buffer[512];
 string command, filepath, htp, line, configHTP, localDir;
-bool correctCommand = false, correctSlash = false, fileExists = false, correctHTP = false, correctExtension = false;
+bool correctCommand, postCommand, correctSlash, fileExists, correctHTP, correctExtension;
 vector<string> extensions;
 
 void getConfigFile()
@@ -51,13 +51,6 @@ void getConfigFile()
 		}
 		
 		extensions.push_back(line);
-	/*
-		int i;
-		for(i=0; i< extensions.size();i++)
-		{
-			cout << extensions[i] <<endl;
-		}
-	*/
 	}
 }
 
@@ -69,7 +62,6 @@ void setSocket()
 	server.sin_family = AF_INET;
 	server.sin_port = htons(port);
 	
-	//cout << htons(port)<<endl;
 
 	if (!inet_aton(ipaddress, &server.sin_addr))
 		cerr << "inet_addr() conversion error\n";
@@ -115,7 +107,10 @@ int main(){
 		else if (command.compare("GET")==0)
 			correctCommand = true;
 		else if (command.compare("POST")==0)
+		{
 			correctCommand = true;
+			postCommand = true;
+		}
 		else{
 			char *message = "501\n";
 			send(c, message, sizeof(message), 0);
@@ -143,7 +138,34 @@ int main(){
 			}
 			cout << "Hypertext Transfer Protocol: " << htp << endl;
 		}
-		if(correctSlash)
+		//check extension first
+			int i;
+			for(i=0; i< extensions.size();i++)
+			{
+				if(filepath.substr(filepath.find(".")+1).compare(extensions[i])==0)
+				{
+					correctExtension = true;
+					cout << "The file extension is supported" << endl;
+				}
+				if(i == extensions.size()-1 and !correctExtension)
+				{
+					cout << "The file extension is not supported" << endl;
+					char *message = "403\n";
+					send(c,message,sizeof(message),0);
+				}
+			}
+		if(postCommand and correctExtension)
+		{
+			ofstream newFile(filepath.c_str());
+			ifstream createdFile(filepath.c_str());
+			if(createdFile.good())
+			{
+				createdFile.close();
+				fileExists = true;
+				cout << "File created" <<endl;
+			}	
+		}
+		if(correctSlash and !postCommand and correctExtension)
 		{
 			ifstream queryFile(filepath.c_str());
 			if(queryFile.good()) 
@@ -151,21 +173,6 @@ int main(){
 				queryFile.close();
 				fileExists = true;
 				cout << "File exists" <<endl;
-				
-				int i;
-				for(i=0; i< extensions.size();i++)
-				{
-					if(filepath.substr(filepath.find(".")+1).compare(extensions[i])==0){
-						correctExtension = true;
-						cout << "The file extension is supported" << endl;
-					}
-					if(i == extensions.size()-1 and !correctExtension)
-					{
-						cout << "The file extension is not supported" << endl;
-						char *message = "403\n";
-						send(c,message,sizeof(message),0);
-					}
-				}
 			}
 			else
 			{
@@ -175,7 +182,7 @@ int main(){
 				send(c,message,sizeof(message),0);
 			}
 		}
-		if(fileExists and correctExtension)
+		if(fileExists)
 		{
 			if(configHTP.compare(htp)==0)
 			{
@@ -204,7 +211,8 @@ int main(){
 		//	close(c);
 		//	break;
 		//}
-		//cout << c<<endl; 
+		//cout << c<<endl;
+		
 	}
 	close(s);
 }
