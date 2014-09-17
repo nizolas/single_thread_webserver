@@ -84,12 +84,9 @@ int  Webserver::startWebserver()
             // Send 501 Error
         }
 
-
-
         send(socket.clientFD, "Hello World!",13, 0);
         close(socket.clientFD);
     }
-
 }
 
 
@@ -98,7 +95,7 @@ int  Webserver::startWebserver()
 //
 // Description: Processes the GET and HEAD requests and sends the appropriate
 //              response message and file back to the remote client.
-// 
+//
 // Parameters:  I- Command to validate.
 //
 // Return:      NA
@@ -204,64 +201,8 @@ void Webserver::processGetandHeadRequests(string command)
     {
         cout << "Send 404 error: File extension not compatible" << endl;
     }
-
-
 }
 
-
-//=============================================================================
-// Name:        processRequests
-//
-// Description: Processes the requests from the remote clients.
-//
-// Parameters:  I- Ptr to socket used.
-//
-// Return:      0 if successful. Otherwise -1;
-//=============================================================================
-/*int Webserver::processRequests(Socket *socket)
-{
-    int  byteCount;
-    char buffer[1024];
-    string command;
-
-    memset(buffer, '\0', sizeof(buffer));
-
-    // Keep accepting requests from remote clients.
-    // ------------------------------------------------------------------------
-    while ((socket->clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen))) > 0)
-    {
-        // Do whatever a web server does.
-        cout << "Connection Established with remote client" << endl;
-
-        byteCount = recv(socket->clientFD, buffer, sizeof(buffer), 0);
-
-        string input(buffer);
-
-        // Get rid of CRLF being set by telnet session.
-        // --------------------------------------------------------------------
-        input = input.substr(0, input.length() - 2);
-        cout << "Client Request:\n" << input << endl;
-
-        command = input.substr(0,input.find(" "));
-
-        if (command.compare("HEAD") == 0 || command.compare("GET") == 0)
-            processGetandHeadRequests(input);
-        else if (command.compare("POST") == 0)
-        {
-        //    correctCommand = true;
-//            postCommand = true;
-        }
-        else
-        {
-            // Send 501 Error
-        }
-
-
-
-        send(socket->clientFD, "Hello World!",13, 0);
-    }
-}
-*/
 
 //=============================================================================
 // Name:        loadConfigFile
