@@ -45,7 +45,166 @@ int  Webserver::startWebserver()
         cout << "Server Port Number: " << port << endl;
         cout << "Server is ready and listening for connections" << endl;
     }
-    processRequests(&socket);
+
+    int  byteCount;
+    char buffer[1024];
+    string command;
+
+    memset(buffer, '\0', sizeof(buffer));
+
+    // Keep accepting requests from remote clients.
+    // ------------------------------------------------------------------------
+    while ((socket.clientFD = accept(socket.serverFD, (struct sockaddr *) &(socket.client), (socklen_t *) &(socket.clientlen))) > 0)
+    {
+        // Do whatever a web server does.
+        cout << "Connection Established with remote client" << endl;
+
+        // Receive a request from the remote client and process it accordingly.
+        // --------------------------------------------------------------------
+        byteCount = recv(socket.clientFD, buffer, sizeof(buffer), 0);
+
+        string input(buffer);
+
+        // Get rid of CRLF being set by telnet session.
+        // --------------------------------------------------------------------
+        input = input.substr(0, input.length() - 2);
+        cout << "Client Request:\n" << input << endl;
+
+        command = input.substr(0,input.find(" "));
+
+        if (command.compare("HEAD") == 0 || command.compare("GET") == 0)
+            processGetandHeadRequests(input);
+        else if (command.compare("POST") == 0)
+        {
+        /*    correctCommand = true;
+            postCommand = true;*/
+        }
+        else
+        {
+            // Send 501 Error
+        }
+
+
+
+        send(socket.clientFD, "Hello World!",13, 0);
+        close(socket.clientFD);
+    }
+
+}
+
+
+//=============================================================================
+// Name:        processGetandHeadRequests
+//
+// Description: Processes the GET and HEAD requests and sends the appropriate
+//              response message and file back to the remote client.
+// 
+// Parameters:  I- Command to validate.
+//
+// Return:      NA
+//=============================================================================
+void Webserver::processGetandHeadRequests(string command)
+{
+    string filePath;
+    string protocolRequest;
+    bool fileExtensionAllowed = false;
+    int numberOfSpace = 0;
+
+    // Requests must be of the form:
+    //     GET /index.html HTTP/1.0
+    // If it's not, return a 400 error message.
+    // ------------------------------------------------------------------------
+
+    // Extract the rest of the command after the GET and HEAD without the
+    // space.
+    // Example: GET /index.html HTTP/1.0 will extract "/index.hml HTTP/1.0"
+    // ------------------------------------------------------------------------
+    string temp = command.substr(command.find(" ") + 1);
+
+    for (int i = 0; i < temp.length(); i++)
+    {
+        if (temp[i] == ' ')
+            numberOfSpace++;
+    }
+
+    if (numberOfSpace != 1)
+    {
+        cout << "Send 400 error: Only 1 space " << endl;
+    }
+
+    // Process the file path requested.
+    // ------------------------------------------------------------------------
+    filePath = temp.substr(0, temp.find(" "));
+
+    // File path provided does not start with "/" - send a 400 error
+    // ------------------------------------------------------------------------
+    if (filePath.at(0) != '/')
+    {
+        cout << "Send 400 error: filepath missing leading /" << endl;
+    }
+    else
+    {
+        filePath = filePath.substr(1);
+    }
+
+    // Parse the protocol
+    // ------------------------------------------------------------------------
+    protocolRequest = temp.substr(temp.find(" ") + 1);
+
+    // HTTP/1.0 is missing the "/" - send a 400 error
+    // ------------------------------------------------------------------------
+    if (protocolRequest.find("/") == string::npos)
+    {
+        cout << "Send 400 error: HTTP missing /" << endl;
+    }
+    else
+    {
+        // Verify that this protocol is compatible with our server.
+        // --------------------------------------------------------------------
+        protocolRequest = protocolRequest.erase(protocolRequest.find("/"), 1);
+
+        if (protocolRequest.compare(protocol) != 0)
+        {
+            cout << "Send 400 error: Protocol not compatible" << endl;
+        }
+    }
+
+    // Protocol is valid and now we need to handle the file requested.
+    // ------------------------------------------------------------------------
+    int positionPeriod = filePath.find(".");
+
+    // If file does not have an extension, set fileExtensionAllowed to
+    // false.
+    // ------------------------------------------------------------------------
+    if (positionPeriod == string::npos)
+    {
+        fileExtensionAllowed = false;
+    }
+    // File has an extension. Check if it is allowed.
+    // ------------------------------------------------------------------------
+    else
+    {
+        for (int i = 0; i < extensionsAllowed.size(); i++)
+        {
+            if (filePath.substr(filePath.find(".") + 1).compare(extensionsAllowed[i]) == 0)
+            {
+                fileExtensionAllowed = true;
+                break;
+            }
+        }
+    }
+
+    // If the file extension is allowed, try to retrieve the file.
+    // ------------------------------------------------------------------------
+    if (fileExtensionAllowed)
+    {
+
+    }
+    else
+    {
+        cout << "Send 404 error: File extension not compatible" << endl;
+    }
+
 
 }
 
@@ -55,41 +214,54 @@ int  Webserver::startWebserver()
 //
 // Description: Processes the requests from the remote clients.
 //
-// Parameters:  NA
+// Parameters:  I- Ptr to socket used.
 //
-// Return:      0 if successfull. Otherwise -1;
+// Return:      0 if successful. Otherwise -1;
 //=============================================================================
-int Webserver::processRequests(Socket *socket)
+/*int Webserver::processRequests(Socket *socket)
 {
     int  byteCount;
     char buffer[1024];
+    string command;
+
     memset(buffer, '\0', sizeof(buffer));
 
-    cout << "test" << endl;
     // Keep accepting requests from remote clients.
     // ------------------------------------------------------------------------
     while ((socket->clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen))) > 0)
     {
-        if (socket->clientFD < 0)
-            cerr <<strerror(errno) << endl;
-
         // Do whatever a web server does.
-        if (debugMode)
-            cout << "Connection Established with remote client" <<endl;
+        cout << "Connection Established with remote client" << endl;
 
         byteCount = recv(socket->clientFD, buffer, sizeof(buffer), 0);
 
         string input(buffer);
 
-        input = input.substr(0,input.length()-2);
-        cout << "Client Input: " << input << endl;
-        cout << "Just received something" << endl;
-        cout << "# of bytes received is: "<< byteCount << endl;
-        cout << "Message received is: " << buffer << endl;
+        // Get rid of CRLF being set by telnet session.
+        // --------------------------------------------------------------------
+        input = input.substr(0, input.length() - 2);
+        cout << "Client Request:\n" << input << endl;
+
+        command = input.substr(0,input.find(" "));
+
+        if (command.compare("HEAD") == 0 || command.compare("GET") == 0)
+            processGetandHeadRequests(input);
+        else if (command.compare("POST") == 0)
+        {
+        //    correctCommand = true;
+//            postCommand = true;
+        }
+        else
+        {
+            // Send 501 Error
+        }
+
+
+
         send(socket->clientFD, "Hello World!",13, 0);
     }
-    }
-
+}
+*/
 
 //=============================================================================
 // Name:        loadConfigFile
@@ -165,7 +337,7 @@ int Webserver::loadConfigFile()
         // --------------------------------------------------------------------
         while(line.find(" ") != string::npos)
         {
-            extensionsAllowed.push_back(line.substr(0,line.find(" ")+1));
+            extensionsAllowed.push_back(line.substr(0,line.find(" ")));
             line = line.substr(line.find(" ")+1);
         }
         extensionsAllowed.push_back(line);
