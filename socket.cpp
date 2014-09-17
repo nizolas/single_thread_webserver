@@ -67,7 +67,6 @@ int Socket::startSocket(char const *ipAddress, const int port, const bool debug)
     int optionValue = 1;
 
     init(ipAddress, port);
-    cout << ipAddress << ":" << port <<endl;
 
     // Create a socket for communication.
     // ------------------------------------------------------------------------
