@@ -16,6 +16,6 @@ public:
     Webserver(char const *ip, int portNumber, bool debug);
     int startWebserver();
     int loadConfigFile();
-    int processRequests(Socket *socket);
+    void processGetandHeadRequests(std::string command);
 };
 
