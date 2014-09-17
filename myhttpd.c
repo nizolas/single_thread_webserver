@@ -1,4 +1,4 @@
-//Some libraries that might be helpful 
+//Some libraries that might be helpful
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -23,12 +23,12 @@ using namespace std;
 
 int c,s,port, byte;
 struct sockaddr_in server, client;
-char *ipaddress = "141.117.57.40";
+char *ipaddress = "141.117.57.46";
 int clientlen = sizeof(client);
 int portset=0;
 char buffer[512];
 string command, filepath, htp, line, configHTP, localDir;
-bool correctCommand, postCommand, correctSlash, fileExists, correctHTP, correctExtension;
+bool correctCommand, postCommand, correctSlash, fileExists, fileRead, correctHTP, correctExtension;
 vector<string> extensions;
 
 void getConfigFile()
@@ -139,50 +139,70 @@ int main(){
 			cout << "Hypertext Transfer Protocol: " << htp << endl;
 		}
 		//check extension first
-			int i;
-			for(i=0; i< extensions.size();i++)
+		int i;
+		for(i=0; i< extensions.size();i++)
+		{
+			if(filepath.substr(filepath.find(".")+1).compare(extensions[i])==0)
 			{
-				if(filepath.substr(filepath.find(".")+1).compare(extensions[i])==0)
-				{
-					correctExtension = true;
-					cout << "The file extension is supported" << endl;
-				}
-				if(i == extensions.size()-1 and !correctExtension)
-				{
-					cout << "The file extension is not supported" << endl;
-					char *message = "403\n";
-					send(c,message,sizeof(message),0);
-				}
+				correctExtension = true;
+				cout << "The file extension is supported" << endl;
 			}
-		if(postCommand and correctExtension)
+			if(i == extensions.size()-1 and !correctExtension)
+			{
+				cout << "The file extension is not supported" << endl;
+				char *message = "403\n";
+				send(c,message,sizeof(message),0);
+			}
+		}
+		//check if the command is post and if the extension is correct
+		// bypass file check and file read check
+		if(postCommand and correctSlash and correctExtension)
 		{
 			ofstream newFile(filepath.c_str());
 			ifstream createdFile(filepath.c_str());
 			if(createdFile.good())
 			{
 				createdFile.close();
-				fileExists = true;
+				fileRead = true;
 				cout << "File created" <<endl;
 			}	
 		}
+		//check if the file exists for get and head command 
 		if(correctSlash and !postCommand and correctExtension)
 		{
-			ifstream queryFile(filepath.c_str());
-			if(queryFile.good()) 
+			
+			cout <<filepath.c_str() << endl;
+			if(access(filepath.c_str(),F_OK)==0) 
 			{
-				queryFile.close();
 				fileExists = true;
 				cout << "File exists" <<endl;
 			}
 			else
 			{
-				queryFile.close();
 				cout << "File does not exist" <<endl;
 				char *message = "404\n";
 				send(c,message,sizeof(message),0);
+				
 			}
 		}
+		//check if the file has read permission for get and head command
 		if(fileExists)
+		{
+			if(FILE *file = fopen(filepath.c_str(), "r"))
+			{
+				fclose(file);
+				fileRead = true;
+				cout << "File is Readable"<<endl;
+			}
+			else
+			{
+				cout << "File not Readable" <<endl;
+				char *message = "403\n";
+				send(c,message,sizeof(message),0);
+			}
+		}
+		//check the HTP
+		if(fileRead)
 		{
 			if(configHTP.compare(htp)==0)
 			{
@@ -197,7 +217,7 @@ int main(){
 				send(c, message, sizeof(message), 0);		
 			}
 		}
-
+		//if all the above is followed return 200
 		if(correctHTP)
 		{
 			cout << "Command is valid (HEAD, GET, or POST)"
@@ -207,12 +227,6 @@ int main(){
 			char *message = "200\n";
 			send(c, message, sizeof(message), 0);		
 		}
-		//if (byte == 4){
-		//	close(c);
-		//	break;
-		//}
-		//cout << c<<endl;
-		
 	}
 	close(s);
 }
