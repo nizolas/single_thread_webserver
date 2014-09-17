@@ -2,6 +2,7 @@
 #include <string>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <limits.h>
 #include <fstream>
 #include "webserver.h"
@@ -60,26 +61,34 @@ int  Webserver::startWebserver()
 //=============================================================================
 int Webserver::processRequests(Socket *socket)
 {
-    int byteCount;
-    char buffer[512];
+    int  byteCount;
+    char buffer[1024];
     memset(buffer, '\0', sizeof(buffer));
 
+    cout << "test" << endl;
     // Keep accepting requests from remote clients.
     // ------------------------------------------------------------------------
-    while ((socket->clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) socket->clientlen)) > 0)
+    while ((socket->clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen))) > 0)
     {
+        if (socket->clientFD < 0)
+            cerr <<strerror(errno) << endl;
+
         // Do whatever a web server does.
         if (debugMode)
-            cout << "Remote client connection accepted" <<endl;
+            cout << "Connection Established with remote client" <<endl;
 
         byteCount = recv(socket->clientFD, buffer, sizeof(buffer), 0);
+
+        string input(buffer);
+
+        input = input.substr(0,input.length()-2);
+        cout << "Client Input: " << input << endl;
         cout << "Just received something" << endl;
         cout << "# of bytes received is: "<< byteCount << endl;
         cout << "Message received is: " << buffer << endl;
         send(socket->clientFD, "Hello World!",13, 0);
     }
-
-}
+    }
 
 
 //=============================================================================
