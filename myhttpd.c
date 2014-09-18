@@ -98,6 +98,8 @@ int main(){
 		cout << "CONNECTED"<<endl;
 		byte = recv(c, buffer, sizeof(buffer),0);
 		string input(buffer);
+		
+		
 		input = input.substr(0,input.length()-2);
 		cout << "Client Input: " << input << endl;
 		command = input.substr(0,input.find(" "));
@@ -217,6 +219,12 @@ int main(){
 				send(c, message, sizeof(message), 0);		
 			}
 		}
+		//take an extra line before continuing to processdd		
+		bzero(buffer,512);
+		byte = recv(c, buffer, sizeof(buffer),0);
+		string input2(buffer);
+		
+		cout <<input2 <<endl;
 		//if all the above is followed return 200
 		if(correctHTP)
 		{
