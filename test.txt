@@ -1,2 +1,6 @@
 Nicolas
+<<<<<<< HEAD
 of course, this guy!
+=======
+	THANUSON IS BETTER
+>>>>>>> f0e3a2d8e686e0848876aa50f2cc283163baf1b9
