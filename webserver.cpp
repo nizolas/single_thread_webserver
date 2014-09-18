@@ -70,25 +70,173 @@ int  Webserver::startWebserver()
         input = input.substr(0, input.length() - 2);
         cout << "Client Request:\n" << input << endl;
 
-        command = input.substr(0,input.find(" "));
-
-        if (command.compare("HEAD") == 0 || command.compare("GET") == 0)
-            processGetandHeadRequests(input);
-        else if (command.compare("POST") == 0)
+        // Validate the syntax. 
+        // If it's incorrect, it will send 400 error.
+        // --------------------------------------------------------------------
+        if (validateRequestSyntax(input) < 0)
         {
-        /*    correctCommand = true;
-            postCommand = true;*/
+            if (debugMode)
+                cout << "Sending 400 error" << endl;
+            sendErrorResponse(socket.clientFD, ERROR_400);
         }
         else
         {
-            // Send 501 Error
+            // Syntax is correct, try processing the request.
+            // First verify that we the method is implemented.
+            // ----------------------------------------------------------------
+            command = input.substr(0, input.find(" "));
+
+            if (command.compare("HEAD") == 0 || command.compare("GET") == 0)
+            {
+                processGetandHeadRequests(input);
+            }
+            else if (command.compare("POST") == 0)
+            {
+            /*    correctCommand = true;
+                postCommand = true;*/
+            }
+            else
+            {
+                if (debugMode)
+                    cout << "Sending 501 error" << endl;
+                sendErrorResponse(socket.clientFD, ERROR_501);
+            }
+
         }
 
-        send(socket.clientFD, "Hello World!",13, 0);
         close(socket.clientFD);
     }
+    return 0;
 }
 
+
+int Webserver::validateRequestSyntax(string command)
+{
+    string temp;
+    string filePath;
+    string protocolRequest;
+    int    numberOfSpace    = 0;
+    bool   errorEncountered = false;
+
+    // Requests should be in the following form:
+    //     GET /index.html HTTP/1.0
+    // If it's not in this form, send 400 error.
+    // ------------------------------------------------------------------------
+    for (int i = 0; i < command.length(); i++)
+    {
+        if (command[i] == ' ')
+            numberOfSpace++;
+    }
+    if (numberOfSpace != 2)
+    {
+        errorEncountered    = true;
+        
+        if (debugMode)
+            cout << "Request Syntax Error: Invalid number of arguments" << endl;
+    }
+
+    if (!errorEncountered)
+    {
+        // Extract the rest of the command after the method without the space.
+        // Example: GET /index.html HTTP/1.0 will extract "/index.hml HTTP/1.0"
+        // ------------------------------------------------------------------------
+        temp = command.substr(command.find(" ") + 1);
+
+        // Process the file path requested.
+        // ------------------------------------------------------------------------
+        filePath = temp.substr(0, temp.find(" "));
+
+        // File path provided does not start with "/" - send a 400 error
+        // ------------------------------------------------------------------------
+        if (filePath.at(0) != '/')
+        {
+            errorEncountered            = true;
+        
+            if (debugMode)
+                cout << "Request Syntax Error: file path missing leading /" << endl;
+        }
+    }
+
+    if (!errorEncountered)
+    {
+        // Parse the protocol
+        // ------------------------------------------------------------------------
+        protocolRequest = temp.substr(temp.find(" ") + 1);
+
+        // HTTP/1.0 is missing the "/" - send a 400 error
+        // ------------------------------------------------------------------------
+        if (protocolRequest.find("/") == string::npos)
+        {
+            errorEncountered     = true;
+        
+            if (debugMode)
+                cout << "Request Syntax Error: HTTP missing /" << endl;
+        }
+        else
+        {
+            // Verify that this protocol is compatible with our server.
+            // --------------------------------------------------------------------
+            if (protocolRequest.compare(protocol) != 0)
+            {
+                errorEncountered = true;
+
+                if (debugMode)
+                    cout << "Request Syntax Error: Protocol not compatible" << endl;
+            }
+        }   
+    }
+
+    if (!errorEncountered)
+    {
+        // Protocol is valid and now we need to handle the file requested.
+        // ------------------------------------------------------------------------
+        bool fileExtensionAllowed = false;
+        int  positionPeriod       = filePath.find(".");
+
+        // If file does not have an extension, set fileExtensionAllowed to
+        // false.
+        // ------------------------------------------------------------------------
+        if (positionPeriod == string::npos)
+        {
+            errorEncountered = true;
+
+            if (debugMode)
+                cout << "Request Syntax Error: Missing extension for the file" << endl;
+        }
+        // File has an extension. Check if it is allowed.
+        // ------------------------------------------------------------------------
+        else
+        {
+            for (int i = 0; i < extensionsAllowed.size(); i++)
+            {
+                if (filePath.substr(filePath.find(".") + 1).compare(extensionsAllowed[i]) == 0)
+                {
+                    fileExtensionAllowed = true;
+                    break;
+                }
+            }
+            if (!fileExtensionAllowed && debugMode)
+            {
+                errorEncountered = true;
+                cout << "Request Syntax Error: File extension not supported" << endl;
+            }
+        }
+    }
+
+    if (errorEncountered)
+    {
+        return -1;
+    }
+    else
+    {
+        // Set the full path name for the request.
+        // --------------------------------------------------------------------
+        fullFilePathForRequest.append(root);
+        fullFilePathForRequest.append(filePath);
+    }
+
+    return 0;
+}
 
 //=============================================================================
 // Name:        processGetandHeadRequests
@@ -102,103 +250,21 @@ int  Webserver::startWebserver()
 //=============================================================================
 void Webserver::processGetandHeadRequests(string command)
 {
-    string filePath;
-    string protocolRequest;
-    string fullFilePath;
 
-    bool fileExtensionAllowed = false;
-    int numberOfSpace = 0;
+    bool fileExtensionAllowed = true;
 
-    // Requests must be of the form:
-    //     GET /index.html HTTP/1.0
-    // If it's not, return a 400 error message.
-    // ------------------------------------------------------------------------
 
-    // Extract the rest of the command after the GET and HEAD without the
-    // space.
-    // Example: GET /index.html HTTP/1.0 will extract "/index.hml HTTP/1.0"
-    // ------------------------------------------------------------------------
-    string temp = command.substr(command.find(" ") + 1);
 
-    for (int i = 0; i < temp.length(); i++)
-    {
-        if (temp[i] == ' ')
-            numberOfSpace++;
-    }
 
-    if (numberOfSpace != 1)
-    {
-        cout << "Send 400 error: Only 1 space " << endl;
-    }
-
-    // Process the file path requested.
-    // ------------------------------------------------------------------------
-    filePath = temp.substr(0, temp.find(" "));
-
-    // File path provided does not start with "/" - send a 400 error
-    // ------------------------------------------------------------------------
-    if (filePath.at(0) != '/')
-    {
-        cout << "Send 400 error: filepath missing leading /" << endl;
-    }
-
-    // Parse the protocol
-    // ------------------------------------------------------------------------
-    protocolRequest = temp.substr(temp.find(" ") + 1);
-
-    // HTTP/1.0 is missing the "/" - send a 400 error
-    // ------------------------------------------------------------------------
-    if (protocolRequest.find("/") == string::npos)
-    {
-        cout << "Send 400 error: HTTP missing /" << endl;
-    }
-    else
-    {
-        // Verify that this protocol is compatible with our server.
-        // --------------------------------------------------------------------
-        protocolRequest = protocolRequest.erase(protocolRequest.find("/"), 1);
-
-        if (protocolRequest.compare(protocol) != 0)
-        {
-            cout << "Send 400 error: Protocol not compatible" << endl;
-        }
-    }
-
-    // Protocol is valid and now we need to handle the file requested.
-    // ------------------------------------------------------------------------
-    int positionPeriod = filePath.find(".");
-
-    // If file does not have an extension, set fileExtensionAllowed to
-    // false.
-    // ------------------------------------------------------------------------
-    if (positionPeriod == string::npos)
-    {
-        fileExtensionAllowed = false;
-    }
-    // File has an extension. Check if it is allowed.
-    // ------------------------------------------------------------------------
-    else
-    {
-        for (int i = 0; i < extensionsAllowed.size(); i++)
-        {
-            if (filePath.substr(filePath.find(".") + 1).compare(extensionsAllowed[i]) == 0)
-            {
-                fileExtensionAllowed = true;
-                break;
-            }
-        }
-    }
 
     // If the file extension is allowed, try to retrieve the file.
     // ------------------------------------------------------------------------
     if (fileExtensionAllowed)
     {
-        fullFilePath.append(root);
-        fullFilePath.append(filePath);
         
-        if (access(fullFilePath.c_str(), F_OK) == 0) 
+        if (access(fullFilePathForRequest.c_str(), F_OK) == 0) 
         {
-            if(FILE *file = fopen(fullFilePath.c_str(), "r"))
+            if(FILE *file = fopen(fullFilePathForRequest.c_str(), "r"))
             {
                 // Send 200 OK and then send file.
                 cout << "Send 200 OK" <<endl;
@@ -222,6 +288,57 @@ void Webserver::processGetandHeadRequests(string command)
     {
         cout << "Send 404 error: File extension not compatible" << endl;
     }
+}
+
+
+//=============================================================================
+// Name:        getFormattedDate
+//
+// Description: Helper function to create the formatted date for the response.
+//
+// Parameters:  NA
+//
+// Return:      NA
+//=============================================================================
+string getFormattedDate()
+{
+    time_t rawtime;
+    struct tm *timeinfo;
+    time(&rawtime);
+    timeinfo = gmtime(&rawtime);
+
+    char buffer[256];
+
+    // Format is: Date: Thu, 18 Sep 2014 04:44:26 GMT
+    // ------------------------------------------------------------------------
+    strftime(buffer, 256, "Date: %a, %d %b %Y %X GMT\r\n", timeinfo);
+
+    string formattedData = string(buffer);
+
+    return formattedData;
+}
+
+//=============================================================================
+// Name:        sendErrorResponse
+//
+// Description: Sends the appropriate error response.
+//
+// Parameters:  
+//
+// Return:      0 if successfull. Otherwise -1.
+//=============================================================================
+void Webserver::sendErrorResponse(int clientFD, string responseCode)
+{
+    string response = protocol;
+    response.append(" ");
+    response.append(responseCode);
+    response.append("\r\n");
+    response.append(getFormattedDate());
+    response.append("Server: AwesomeServer 1.0\r\n");
+    response.append("Connection: close\r\n");
+
+    send(clientFD, response.c_str(), response.length(), 0);
+
 }
 
 
@@ -269,7 +386,8 @@ int Webserver::loadConfigFile()
         // Example:
         // HTTP1.0 [/home/user/html]
         // - To get the protocol, extract from position 0 up to the " " and minus
-        //   1 in order to remove the " ".
+        //   1 in order to remove the " ". Add a "/" after HTTP to make it
+        //   follow the protocol.
         // - To get the root directory, extract as from the first character
         //   after the "[" and the size to extract will be calculated with
         //   position of "]" - position of "[" - 1 in order to get the root.
@@ -278,6 +396,7 @@ int Webserver::loadConfigFile()
         // --------------------------------------------------------------------
 
         protocol = line.substr(0, line.find(" "));
+        protocol = protocol.insert(4, "/");
         root     = line.substr( line.find("[") + 1,
                                 line.find("]") - line.find("[") - 1);
 
