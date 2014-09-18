@@ -104,6 +104,8 @@ void Webserver::processGetandHeadRequests(string command)
 {
     string filePath;
     string protocolRequest;
+    string fullFilePath;
+
     bool fileExtensionAllowed = false;
     int numberOfSpace = 0;
 
@@ -138,10 +140,6 @@ void Webserver::processGetandHeadRequests(string command)
     if (filePath.at(0) != '/')
     {
         cout << "Send 400 error: filepath missing leading /" << endl;
-    }
-    else
-    {
-        filePath = filePath.substr(1);
     }
 
     // Parse the protocol
@@ -195,7 +193,30 @@ void Webserver::processGetandHeadRequests(string command)
     // ------------------------------------------------------------------------
     if (fileExtensionAllowed)
     {
-
+        fullFilePath.append(root);
+        fullFilePath.append(filePath);
+        
+        if (access(fullFilePath.c_str(), F_OK) == 0) 
+        {
+            if(FILE *file = fopen(fullFilePath.c_str(), "r"))
+            {
+                // Send 200 OK and then send file.
+                cout << "Send 200 OK" <<endl;
+                fclose(file);
+            }
+            else
+            {
+                cout << "Send 403 error: File not Readable" <<endl;
+                //char *message = "403\n";
+                //send(c,message,sizeof(message),0);
+            }
+        }
+        else
+        {
+            cout << "Send 404 error: File does not exist" <<endl;
+           // char *message = "404\n";
+           // send(c,message,sizeof(message),0);
+        }
     }
     else
     {
@@ -298,7 +319,8 @@ int Webserver::loadConfigFile()
         cerr << "Error: Unable to read the config file. Aborting!" << endl;
         return -1;
     }
-
+    
+    configFile.close();
     return 0;
 }
 
