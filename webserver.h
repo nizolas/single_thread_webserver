@@ -19,13 +19,15 @@ private:
     std::string root;
     std::string protocol;
     std::string fullFilePathForRequest;
+    std::string fileFormatForRequest;
 
 public:
     Webserver(char const *ip, int portNumber, bool debug);
     int startWebserver();
     int loadConfigFile();
-    void processGetandHeadRequests(std::string command);
+    void processGetandHeadRequests(int clientFD, std::string command, std::string method);
     int validateRequestSyntax(std::string command);
     void sendErrorResponse(int clientFD, std::string responseCode);
+    void send200OkResponse(int clientFD, std::string responseCode, std::string content, std::string contentLength, std::string method);
 };
 
