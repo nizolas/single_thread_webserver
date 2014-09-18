@@ -369,9 +369,9 @@ void Webserver::processGetandHeadRequests(int clientFD, string command, string m
             // Allocate memory for the whole file and start reading.
             // ----------------------------------------------------------------
             buffer = (char*) malloc (sizeof(char)*size);
-            numElements = fread (buffer, 1, size, file);
+            bzero(buffer, sizeof(buffer));
+	    numElements = fread (buffer, 1, size, file);
             fclose(file);
-
             string content(buffer);
             char temp[512];
             sprintf(temp, "%d", content.length());
