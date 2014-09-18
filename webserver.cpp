@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/stat.h>
 #include <limits.h>
 #include <fstream>
 #include "webserver.h"
@@ -12,6 +13,85 @@
 
 using namespace std;
 
+
+//=============================================================================
+// Name:        getFormattedDate
+//
+// Description: Helper function to create the formatted date for the response.
+//
+// Parameters:  NA
+//
+// Return:      NA
+//=============================================================================
+string getFormattedDate()
+{
+    time_t rawtime;
+    struct tm *timeinfo;
+    time(&rawtime);
+    timeinfo = gmtime(&rawtime);
+
+    char buffer[256];
+
+    // Format is: Date: Thu, 18 Sep 2014 04:44:26 GMT
+    // ------------------------------------------------------------------------
+    strftime(buffer, 256, "Date: %a, %d %b %Y %X GMT\r\n", timeinfo);
+
+    string formattedData = string(buffer);
+
+    return formattedData;
+}
+
+//=============================================================================
+// Name:        getLastModified
+//
+// Description: Helper function to create the formatted date for last modified
+//              timestamp.
+//
+// Parameters:  I- file name
+//
+// Return:      NA
+//=============================================================================
+string getLastModified(string filename)
+{
+    struct tm *timeinfo;
+    struct stat attribute;
+    stat(filename.c_str(), &attribute);
+    timeinfo = gmtime(&(attribute.st_mtime));
+
+    char buffer[256];
+
+    // Format is: Date: Thu, 18 Sep 2014 04:44:26 GMT
+    // ------------------------------------------------------------------------
+    strftime(buffer, 256, "Last-Modified: %a, %d %b %Y %X GMT\r\n", timeinfo);
+
+    string formattedData = string(buffer);
+
+    return formattedData;
+}
+
+//=============================================================================
+// Name:        getContentType
+//
+// Description: Helper function to create the formatted string for the content
+//              type.
+//
+// Parameters:  I- file name
+//
+// Return:      NA
+//=============================================================================
+string getContentType(string fileFormatForRequest)
+{
+    if (   fileFormatForRequest.compare("html") == 0
+        || fileFormatForRequest.compare("HTML") == 0
+        || fileFormatForRequest.compare("htm") == 0 )
+    {
+        return "Content-Type: text/html; charset=iso-8859-1\r\n";
+    }
+}
+
+
+
+// Constructor
 Webserver::Webserver(char const *ip, int portNumber, bool debug)
 {
     ipAddress = ip;
@@ -70,7 +150,7 @@ int  Webserver::startWebserver()
         input = input.substr(0, input.length() - 2);
         cout << "Client Request:\n" << input << endl;
 
-        // Validate the syntax. 
+        // Validate the syntax.
         // If it's incorrect, it will send 400 error.
         // --------------------------------------------------------------------
         if (validateRequestSyntax(input) < 0)
@@ -88,7 +168,7 @@ int  Webserver::startWebserver()
 
             if (command.compare("HEAD") == 0 || command.compare("GET") == 0)
             {
-                processGetandHeadRequests(input);
+                processGetandHeadRequests(socket.clientFD, input, command);
             }
             else if (command.compare("POST") == 0)
             {
@@ -109,7 +189,15 @@ int  Webserver::startWebserver()
     return 0;
 }
 
-
+//=============================================================================
+// Name:        validateRequestSyntax
+//
+// Description: Validate the request syntax.
+//
+// Parameters:  I- the request to validate.
+//
+// Return:      0 if successfull. Otherwise -1;
+//=============================================================================
 int Webserver::validateRequestSyntax(string command)
 {
     string temp;
@@ -130,7 +218,7 @@ int Webserver::validateRequestSyntax(string command)
     if (numberOfSpace != 2)
     {
         errorEncountered    = true;
-        
+
         if (debugMode)
             cout << "Request Syntax Error: Invalid number of arguments" << endl;
     }
@@ -151,7 +239,7 @@ int Webserver::validateRequestSyntax(string command)
         if (filePath.at(0) != '/')
         {
             errorEncountered            = true;
-        
+
             if (debugMode)
                 cout << "Request Syntax Error: file path missing leading /" << endl;
         }
@@ -168,7 +256,7 @@ int Webserver::validateRequestSyntax(string command)
         if (protocolRequest.find("/") == string::npos)
         {
             errorEncountered     = true;
-        
+
             if (debugMode)
                 cout << "Request Syntax Error: HTTP missing /" << endl;
         }
@@ -183,7 +271,7 @@ int Webserver::validateRequestSyntax(string command)
                 if (debugMode)
                     cout << "Request Syntax Error: Protocol not compatible" << endl;
             }
-        }   
+        }
     }
 
     if (!errorEncountered)
@@ -212,6 +300,7 @@ int Webserver::validateRequestSyntax(string command)
                 if (filePath.substr(filePath.find(".") + 1).compare(extensionsAllowed[i]) == 0)
                 {
                     fileExtensionAllowed = true;
+                    fileFormatForRequest = extensionsAllowed[i];
                     break;
                 }
             }
@@ -244,86 +333,80 @@ int Webserver::validateRequestSyntax(string command)
 // Description: Processes the GET and HEAD requests and sends the appropriate
 //              response message and file back to the remote client.
 //
-// Parameters:  I- Command to validate.
+// Parameters:  I- the file descriptor of the client
+//              I- Command to validate.
+//              I- method used.
+//
 //
 // Return:      NA
 //=============================================================================
-void Webserver::processGetandHeadRequests(string command)
+void Webserver::processGetandHeadRequests(int clientFD, string command, string method)
 {
+    FILE *file;
+    long size;
+    char *buffer;
+    size_t numElements;
 
-    bool fileExtensionAllowed = true;
-
-
-
-
-
-    // If the file extension is allowed, try to retrieve the file.
+    // File extension check has already been done in validateRequestSyntax().
+    // All we need to do verify if file exists and if it it accessible. Then
+    // send response code accordingly.
+    // - 200 OK if file is readable
+    // - 403 Forbidden if file does not have read permission
+    // - 404 Not Found if file does not exist
     // ------------------------------------------------------------------------
-    if (fileExtensionAllowed)
+    if (access(fullFilePathForRequest.c_str(), F_OK) == 0)
     {
-        
-        if (access(fullFilePathForRequest.c_str(), F_OK) == 0) 
+        // File is readable.
+        // --------------------------------------------------------------------
+        if(file = fopen(fullFilePathForRequest.c_str(), "r"))
         {
-            if(FILE *file = fopen(fullFilePathForRequest.c_str(), "r"))
-            {
-                // Send 200 OK and then send file.
-                cout << "Send 200 OK" <<endl;
-                fclose(file);
-            }
-            else
-            {
-                cout << "Send 403 error: File not Readable" <<endl;
-                //char *message = "403\n";
-                //send(c,message,sizeof(message),0);
-            }
+            // Get file size
+            // ----------------------------------------------------------------
+            fseek(file , 0 , SEEK_END);
+            size = ftell(file);
+            rewind(file);
+
+            // Allocate memory for the whole file and start reading.
+            // ----------------------------------------------------------------
+            buffer = (char*) malloc (sizeof(char)*size);
+            numElements = fread (buffer, 1, size, file);
+            fclose(file);
+
+            string content(buffer);
+            char temp[512];
+            sprintf(temp, "%d", content.length());
+
+            if (debugMode)
+                cout << "Send 200 OK" << endl;
+            send200OkResponse(clientFD, OK_200, buffer, temp, method);
         }
+        // File is not readable.
+        // --------------------------------------------------------------------
         else
         {
-            cout << "Send 404 error: File does not exist" <<endl;
-           // char *message = "404\n";
-           // send(c,message,sizeof(message),0);
+            if (debugMode)
+                cout << "Send 403 error: File not Readable" <<endl;
+            sendErrorResponse(clientFD, ERROR_403);
         }
     }
+    // File does not exist.
+    // ------------------------------------------------------------------------
     else
     {
-        cout << "Send 404 error: File extension not compatible" << endl;
+        if (debugMode)
+            cout << "Send 404 error: File does not exist" <<endl;
+        sendErrorResponse(clientFD, ERROR_404);
     }
 }
 
-
-//=============================================================================
-// Name:        getFormattedDate
-//
-// Description: Helper function to create the formatted date for the response.
-//
-// Parameters:  NA
-//
-// Return:      NA
-//=============================================================================
-string getFormattedDate()
-{
-    time_t rawtime;
-    struct tm *timeinfo;
-    time(&rawtime);
-    timeinfo = gmtime(&rawtime);
-
-    char buffer[256];
-
-    // Format is: Date: Thu, 18 Sep 2014 04:44:26 GMT
-    // ------------------------------------------------------------------------
-    strftime(buffer, 256, "Date: %a, %d %b %Y %X GMT\r\n", timeinfo);
-
-    string formattedData = string(buffer);
-
-    return formattedData;
-}
 
 //=============================================================================
 // Name:        sendErrorResponse
 //
 // Description: Sends the appropriate error response.
 //
-// Parameters:  
+// Parameters:  I- the client file descriptor.
+//              I- the response code to send.
 //
 // Return:      0 if successfull. Otherwise -1.
 //=============================================================================
@@ -339,6 +422,51 @@ void Webserver::sendErrorResponse(int clientFD, string responseCode)
 
     send(clientFD, response.c_str(), response.length(), 0);
 
+}
+
+
+//=============================================================================
+// Name:        send200OkResponse
+//
+// Description: Sends the appropriate error response.
+//
+// Parameters:  I- the client file descriptor.
+//              I- the response code to send.
+//              I- the content of the file.
+//              I- the content length.
+//              I- the method used.
+//
+// Return:      0 if successfull. Otherwise -1.
+//=============================================================================
+void Webserver::send200OkResponse(int clientFD,
+                                  string responseCode,
+                                  string content,
+                                  string contentLength,
+                                  string method)
+{
+
+    string response = protocol;
+    response.append(" ");
+    response.append(responseCode);
+    response.append("\r\n");
+    response.append(getFormattedDate());
+    response.append("Server: AwesomeServer 1.0\r\n");
+    response.append(getLastModified(fullFilePathForRequest));
+    response.append("Content-Length: ");
+    response.append(contentLength);
+    response.append("\r\n");
+    response.append("Connection: close\r\n");
+    response.append(getContentType(fileFormatForRequest));
+    response.append("\r\n");
+
+    // Add the content of the file only if it is a GET request
+    // ------------------------------------------------------------------------
+    if (method.compare("GET") == 0)
+    {
+        response.append(content);
+    }
+
+    send(clientFD, response.c_str(), response.length(), 0);
 }
 
 
@@ -438,7 +566,7 @@ int Webserver::loadConfigFile()
         cerr << "Error: Unable to read the config file. Aborting!" << endl;
         return -1;
     }
-    
+
     configFile.close();
     return 0;
 }
