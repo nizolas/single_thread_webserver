@@ -130,12 +130,11 @@ int  Webserver::startWebserver()
     char buffer[1024];
     string command;
 
-    memset(buffer, '\0', sizeof(buffer));
-
     // Keep accepting requests from remote clients.
     // ------------------------------------------------------------------------
     while ((socket.clientFD = accept(socket.serverFD, (struct sockaddr *) &(socket.client), (socklen_t *) &(socket.clientlen))) > 0)
     {
+	bzero(buffer, sizeof(buffer));
         // Do whatever a web server does.
         cout << "Connection Established with remote client" << endl;
 
@@ -320,6 +319,7 @@ int Webserver::validateRequestSyntax(string command)
     {
         // Set the full path name for the request.
         // --------------------------------------------------------------------
+        fullFilePathForRequest.clear();
         fullFilePathForRequest.append(root);
         fullFilePathForRequest.append(filePath);
     }
