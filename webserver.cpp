@@ -144,6 +144,11 @@ int  Webserver::startWebserver()
 
         string input(buffer);
 
+
+	//Take only the first line of input
+	//add one so that CRLF is restored ---------------------------------------------SHOULD THIS BE SIMPLIFIED?
+	input = input.substr(0,input.find("\n")+1);
+
         // Get rid of CRLF being set by telnet session.
         // --------------------------------------------------------------------
         input = input.substr(0, input.length() - 2);
@@ -372,13 +377,17 @@ void Webserver::processGetandHeadRequests(int clientFD, string command, string m
             bzero(buffer, sizeof(buffer));
 	    numElements = fread (buffer, 1, size, file);
             fclose(file);
-            string content(buffer);
+	    
+	    string content = string(buffer);
+	    //remove extra characters that might be coming from buffer
+	    content = content.substr(0,size);
+	   
             char temp[512];
             sprintf(temp, "%d", content.length());
 
             if (debugMode)
                 cout << "Send 200 OK" << endl;
-            send200OkResponse(clientFD, OK_200, buffer, temp, method);
+            send200OkResponse(clientFD, OK_200, content, temp, method);
         }
         // File is not readable.
         // --------------------------------------------------------------------
