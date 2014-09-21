@@ -9,7 +9,6 @@
 #include <iostream>
 #include "webserver.h"
 
-
 #define IP_ADDRESS "141.117.57.46"  // Replace with the correct IP of the host.
 #define CONFIG_FILE "myhttpd.conf"
 
@@ -80,14 +79,55 @@ string getLastModified(string filename)
 //
 // Return:      NA
 //=============================================================================
-string getContentType(string fileFormatForRequest)
+string getContentType(string fileFormatForRequest, string content)
 {
+    string result;
+
     if (   fileFormatForRequest.compare("html") == 0
         || fileFormatForRequest.compare("HTML") == 0
         || fileFormatForRequest.compare("htm") == 0 )
     {
-        return "Content-Type: text/html; charset=iso-8859-1\r\n";
+        result = "Content-Type: text/html";
     }
+    else if (fileFormatForRequest.compare("txt") == 0)
+    {
+        result = "Content-Type: text/text";
+    }
+
+    // Extract the charset and attach it.
+    // ------------------------------------------------------------------------
+    if (content.find("charset=") != string::npos)
+    {
+        content = content.substr(content.find("charset="));
+        content = content.substr(content.find("=") + 1);
+        content = content.substr(0, content.find("\r\n"));
+
+        // HTML5
+        if (content.at(0) == '\"')
+        {
+            content = content.substr(1);
+            if (content.find("\"") != string::npos)
+            {
+                content = content.substr(0, content.find("\""));
+            }
+            else
+                content.clear();
+        }
+        // Lower than HTML5
+        else
+        {
+            if (content.find("\"") != string::npos)
+            {
+                content = content.substr(0, content.find("\""));
+            }
+            else
+                content.clear();
+        }
+        result.append("; charset=");
+        result.append(content);
+        result.append("\r\n");
+    }
+    return result;
 }
 
 void extractCommandForBrowserRequest(string inputBuffer, queue<string> *inputCommands)
@@ -137,16 +177,17 @@ int  Webserver::startWebserver()
         cout << "Server is ready and listening for connections" << endl;
     }
 
-    int  byteCount;
-    char buffer[1024];
-    string command;
-    string input;
     // Keep accepting requests from remote clients.
     // ------------------------------------------------------------------------
     while ((socket.clientFD = accept(socket.serverFD, (struct sockaddr *) &(socket.client), (socklen_t *) &(socket.clientlen))) > 0)
     {
         // Do whatever a web server does.
         queue<string> inputCommands;
+        int  byteCount;
+        char buffer[1024];
+        string method;
+        string input;
+
         bool requestEnded               = false;
         bool previousBufferWasEmptyLine = true;
         bool isBrowserRequest           = false;
@@ -177,6 +218,7 @@ int  Webserver::startWebserver()
                 requestEnded = true;
                 isBrowserRequest = true;
                 extractCommandForBrowserRequest(input, &inputCommands);
+                cout << input << endl;
             }
             // Telnet commands.
             // ----------------------------------------------------------------
@@ -191,6 +233,7 @@ int  Webserver::startWebserver()
                     // Get rid of CRLF being set by telnet session.
                     // --------------------------------------------------------
                     input = input.substr(0, input.length() - 2);
+                    cout << input << endl;
 
                     inputCommands.push(input);
                     previousBufferWasEmptyLine = false;
@@ -206,75 +249,46 @@ int  Webserver::startWebserver()
             }
         }
 
+        method = inputCommands.front();
+        method = method.substr(0, method.find(" "));
+
         // Validate the syntax.
         // If it's incorrect, it will send 400 error.
         // --------------------------------------------------------------------
         if (validateRequestSyntax(inputCommands) < 0)
         {
             if (debugMode)
-                cout << "Sending 400 error" << endl;
-            sendErrorResponse(socket.clientFD, ERROR_400);
+                cout << "Sending 400 error" << endl << endl;
+            sendErrorResponse(socket.clientFD, ERROR_400, method);
         }
         else
         {
             // Syntax is correct, try processing the request.
             // First verify that the method is implemented.
             // ----------------------------------------------------------------
-            command = inputCommands.front();
-            command = command.substr(0, command.find(" "));
             inputCommands.pop();
 
-            if (command.compare("HEAD") == 0 || command.compare("GET") == 0)
+            if (method.compare("HEAD") == 0 || method.compare("GET") == 0)
             {
-                processGetandHeadRequests(socket.clientFD, input, command);
+                processGetandHeadRequests(socket.clientFD, method);
             }
-            else if (command.compare("POST") == 0)
+            else if (method.compare("POST") == 0)
             {
+                processPostRequests(socket.clientFD, &inputCommands);
             //    correctCommand = true;
             //    postCommand = true;
             }
             else
             {
                 if (debugMode)
-                    cout << "Sending 501 error" << endl;
-                sendErrorResponse(socket.clientFD, ERROR_501);
+                    cout << "Sending 501 error" << endl << endl;
+                sendErrorResponse(socket.clientFD, ERROR_501, method);
             }
-
         }
-        //cout << endl;
         close(socket.clientFD);
     }
     return 0;
 }
-
-//=============================================================================
-// Name:        validateRequestMethod
-//
-// Description: Validate the request method is implemented.
-//
-// Parameters:  I- the request method
-//
-// Return:      0 if successfull. Otherwise -1;
-//=============================================================================
-/*validateRequestMethod(string command)
-{
-    if (command.compare("HEAD") == 0 || command.compare("GET") == 0)
-    {
-        processGetandHeadRequests(socket.clientFD, input, command);
-    }
-    else if (command.compare("POST") == 0)
-    {
-        //    correctCommand = true;
-        //    postCommand = true;
-    }
-    else
-    {
-        if (debugMode)
-            cout << "Sending 501 error" << endl;
-        sendErrorResponse(socket.clientFD, ERROR_501);
-    }
-}
-*/
 
 
 //=============================================================================
@@ -505,13 +519,11 @@ int Webserver::validateRequestSyntax(queue<string> inputCommands)
 //              response message and file back to the remote client.
 //
 // Parameters:  I- the file descriptor of the client
-//              I- Command to validate.
 //              I- method used.
-//
 //
 // Return:      NA
 //=============================================================================
-void Webserver::processGetandHeadRequests(int clientFD, string command, string method)
+void Webserver::processGetandHeadRequests(int clientFD, string method)
 {
     FILE *file;
     long size;
@@ -548,9 +560,8 @@ void Webserver::processGetandHeadRequests(int clientFD, string command, string m
             string content(buffer);
             char contentLength[512];
             sprintf(contentLength, "%ld", size);
-
             if (debugMode)
-                cout << "Send 200 OK" << endl;
+                cout << "Sending 200 OK" << endl << endl;
             send200OkResponse(clientFD, OK_200, buffer, contentLength, method);
             free(buffer);
         }
@@ -559,8 +570,8 @@ void Webserver::processGetandHeadRequests(int clientFD, string command, string m
         else
         {
             if (debugMode)
-                cout << "Send 403 error: File not Readable" <<endl;
-            sendErrorResponse(clientFD, ERROR_403);
+                cout << "Sending 403 error: File not Readable" << endl << endl;
+            sendErrorResponse(clientFD, ERROR_403, method);
         }
     }
     // File does not exist.
@@ -568,8 +579,74 @@ void Webserver::processGetandHeadRequests(int clientFD, string command, string m
     else
     {
         if (debugMode)
-            cout << "Send 404 error: File does not exist" <<endl;
-        sendErrorResponse(clientFD, ERROR_404);
+            cout << "Sending 404 error: File does not exist" << endl << endl;
+        sendErrorResponse(clientFD, ERROR_404, method);
+    }
+}
+
+//=============================================================================
+// Name:        processPostRequests
+//
+// Description: Processes the POST requests and write to the file if allowed
+//              and sends the appropriate response message to the remote
+//              client.
+//
+// Parameters:  I- the file descriptor of the client
+//              IO ptr to queue for the input command
+//
+// Return:      NA
+//=============================================================================
+void Webserver::processPostRequests(int clientFD,
+                                    queue<string> *inputCommand)
+{
+    string command;
+    string contentToWrite;
+    int contentLength;
+
+    ofstream newFile(fullFilePathForRequest.c_str());
+    if (newFile.is_open())
+    {
+        if (debugMode)
+            cout << fullFilePathForRequest << " has been created" << endl;
+
+        // Get the content-length.
+        // --------------------------------------------------------------------
+        command = inputCommand->front();
+        inputCommand->pop();
+        command = command.substr(command.find(" ") + 1);
+        contentLength = atoi(command.c_str());
+
+        // Get the content that needs to be written to the file
+        // --------------------------------------------------------------------
+        while (!inputCommand->empty())
+        {
+            contentToWrite.append(inputCommand->front());
+            inputCommand->pop();
+        }
+
+        cout << "contentToWrite:" << endl;
+        cout << contentToWrite << "!" << endl;
+        cout << "Content-Length: " << contentLength << "Size: " << contentToWrite.length() << endl;
+        // Technically speaking, content-length should match the size of the
+        // content to be written. For this assignment, there's no mention of
+        // what error code to be sent, we will just output this as a warning
+        // when running in debug mode.
+        // --------------------------------------------------------------------
+        if (contentLength != contentToWrite.length())
+        {
+            if (debugMode)
+                cout << "Warning: Content-Length is not equal to the number of "
+                     << "bytes that need to be written to the file" << endl;
+        }
+        else
+        {
+            newFile.write(contentToWrite.c_str(), contentToWrite.length());
+            newFile.close();
+
+            if (debugMode)
+                cout << "Sending 201 Created" << endl << endl;
+            send201Response(clientFD, OK_201);
+        }
     }
 }
 
@@ -584,18 +661,42 @@ void Webserver::processGetandHeadRequests(int clientFD, string command, string m
 //
 // Return:      0 if successfull. Otherwise -1.
 //=============================================================================
-void Webserver::sendErrorResponse(int clientFD, string responseCode)
+void Webserver::sendErrorResponse(int clientFD, string responseCode, string method)
 {
+    string errorContent;
+
+    if (responseCode.compare(ERROR_400) == 0)
+        errorContent = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>CPS730 - Assignment1</title></head><body><h2>400 Bad Request</h2></body></html>\r\n";
+    else if (responseCode.compare(ERROR_403) == 0)
+        errorContent = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>CPS730 - Assignment1</title></head><body><h2>403 Forbidden</h2></body></html>\r\n";
+    else if (responseCode.compare(ERROR_404) == 0)
+        errorContent = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>CPS730 - Assignment1</title></head><body><h2>404 Not Found</h2></body></html>\r\n";
+    else if (responseCode.compare(ERROR_501) == 0)
+        errorContent = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\"><title>CPS730 - Assignment1</title></head><body><h2>501 Not Implemented</h2></body></html>\r\n";
+
+    char contentLength[512];
+    sprintf(contentLength, "%ld", errorContent.length());
+
     string response = protocol;
     response.append(" ");
     response.append(responseCode);
     response.append("\r\n");
     response.append(getFormattedDate());
     response.append("Server: AwesomeServer 1.0\r\n");
+    response.append("Content-Length: ");
+    response.append(contentLength);
+    response.append("\r\n");
     response.append("Connection: close\r\n");
+    response.append("Content-Type: text/html; charset=UTF-8\r\n\r\n");
+
+    // Add the content of the file only if it is a GET request
+    // ------------------------------------------------------------------------
+    if (method.compare("GET") == 0)
+    {
+        response.append(errorContent);
+    }
 
     send(clientFD, response.c_str(), response.length(), 0);
-
 }
 
 
@@ -629,7 +730,7 @@ void Webserver::send200OkResponse(int clientFD,
     response.append(contentLength);
     response.append("\r\n");
     response.append("Connection: close\r\n");
-    response.append(getContentType(fileFormatForRequest));
+    response.append(getContentType(fileFormatForRequest, content));
     response.append("\r\n");
 
     // Add the content of the file only if it is a GET request
@@ -643,6 +744,32 @@ void Webserver::send200OkResponse(int clientFD,
 }
 
 
+//=============================================================================
+// Name:        send201Response
+//
+// Description: Sends the appropriate error response.
+//
+// Parameters:  I- the client file descriptor.
+//              I- the response code to send.
+//              I- the content of the file.
+//              I- the content length.
+//              I- the method used.
+//
+// Return:      0 if successfull. Otherwise -1.
+//=============================================================================
+void Webserver::send201Response(int clientFD, string responseCode)
+{
+    string response = protocol;
+    response.append(" ");
+    response.append(responseCode);
+    response.append("\r\n");
+    response.append(getFormattedDate());
+    response.append("Server: AwesomeServer 1.0\r\n");
+    response.append("Connection: close\r\n");
+    response.append("\r\n");
+
+    send(clientFD, response.c_str(), response.length(), 0);
+}
 //=============================================================================
 // Name:        loadConfigFile
 //
