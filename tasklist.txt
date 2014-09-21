@@ -1,3 +1,3 @@
-- Add implementation of POST
-- Get POST to write content to file
-- Add html code to error message to be displayed properly on browser (Optional)
+- Add implementation of POST  ---------> DONE
+- Get POST to write content to file   ---------> DONE
+- Add html code to error message to be displayed properly on browser (Optional)    ---------> DONE
