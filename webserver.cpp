@@ -1,18 +1,19 @@
-#include <iostream>
 #include <string>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <limits.h>
 #include <fstream>
+#include <iostream>
 #include "webserver.h"
+
 
 #define IP_ADDRESS "141.117.57.46"  // Replace with the correct IP of the host.
 #define CONFIG_FILE "myhttpd.conf"
 
 using namespace std;
-
 
 //=============================================================================
 // Name:        getFormattedDate
@@ -89,7 +90,11 @@ string getContentType(string fileFormatForRequest)
     }
 }
 
-
+void extractCommandForBrowserRequest(string inputBuffer, queue<string> *inputCommands)
+{
+    inputBuffer = inputBuffer.substr(0, inputBuffer.find("\r\n"));
+    inputCommands->push(inputBuffer);
+}
 
 // Constructor
 Webserver::Webserver(char const *ip, int portNumber, bool debug)
@@ -110,6 +115,12 @@ Webserver::Webserver(char const *ip, int portNumber, bool debug)
 //=============================================================================
 int  Webserver::startWebserver()
 {
+    // Queue to handle inputBuffer in case of multiple buffer being received.
+    // For example, post request will send
+    // - POST /file.html HTTP/1.0
+    // - Content-Length: 168
+    // ------------------------------------------------------------------------
+
     if (loadConfigFile() < 0)
         return -1;
 
@@ -129,30 +140,76 @@ int  Webserver::startWebserver()
     int  byteCount;
     char buffer[1024];
     string command;
-
+    string input;
     // Keep accepting requests from remote clients.
     // ------------------------------------------------------------------------
     while ((socket.clientFD = accept(socket.serverFD, (struct sockaddr *) &(socket.client), (socklen_t *) &(socket.clientlen))) > 0)
     {
-	bzero(buffer, sizeof(buffer));
         // Do whatever a web server does.
+        queue<string> inputCommands;
+        bool requestEnded               = false;
+        bool previousBufferWasEmptyLine = true;
+        bool isBrowserRequest           = false;
+
         cout << "Connection Established with remote client" << endl;
+        cout << "Client Request:" << endl;
 
-        // Receive a request from the remote client and process it accordingly.
-        // --------------------------------------------------------------------
-        byteCount = recv(socket.clientFD, buffer, sizeof(buffer), 0);
+        while (!requestEnded)
+        {
+            bzero(buffer, sizeof(buffer));
+            // Receive a request from the remote client and process it accordingly.
+            // --------------------------------------------------------------------
+            byteCount = recv(socket.clientFD, buffer, sizeof(buffer), 0);
+            input.assign(buffer);
 
-        string input(buffer);
+            // If first buffer receive only contains CRLF, ignore and keep
+            // waiting for
+            // There are 2 cases to consider here.
+            // - For a request from a browser, the whole request will be send
+            //   one buffer. So to know, if we have received the whole buffer,
+            //   we will receive CRLFCRLF at the end of the buffer.
+            // - For telnet request, the request will be sent in different
+            //   receive buffer. So check if the first buffer has receive some
+            //   content immediately followed by a buffer containing only CRLF.
+            // ----------------------------------------------------------------
+            if (input.find("\r\n\r\n") != string::npos)
+            {
+                requestEnded = true;
+                isBrowserRequest = true;
+                extractCommandForBrowserRequest(input, &inputCommands);
+            }
+            // Telnet commands.
+            // ----------------------------------------------------------------
+            else
+            {
+                // The buffer contains a request.
+                // Set previousBufferWasEmptyLine to false and we can exit the
+                // inner loop if an empty line is sent.
+                // ------------------------------------------------------------
+                if (input.compare("\r\n") != 0)
+                {
+                    // Get rid of CRLF being set by telnet session.
+                    // --------------------------------------------------------
+                    input = input.substr(0, input.length() - 2);
 
-        // Get rid of CRLF being set by telnet session.
-        // --------------------------------------------------------------------
-        input = input.substr(0, input.length() - 2);
-        cout << "Client Request:\n" << input << endl;
+                    inputCommands.push(input);
+                    previousBufferWasEmptyLine = false;
+                }
+                // The buffer contains an empty line.
+                // Set requestEnded to true ONLY if we have received a non
+                // empty buffer before.
+                // ------------------------------------------------------------
+                else if (!previousBufferWasEmptyLine)
+                {
+                    requestEnded = true;
+                }
+            }
+        }
 
         // Validate the syntax.
         // If it's incorrect, it will send 400 error.
         // --------------------------------------------------------------------
-        if (validateRequestSyntax(input) < 0)
+        if (validateRequestSyntax(inputCommands) < 0)
         {
             if (debugMode)
                 cout << "Sending 400 error" << endl;
@@ -161,9 +218,11 @@ int  Webserver::startWebserver()
         else
         {
             // Syntax is correct, try processing the request.
-            // First verify that we the method is implemented.
+            // First verify that the method is implemented.
             // ----------------------------------------------------------------
-            command = input.substr(0, input.find(" "));
+            command = inputCommands.front();
+            command = command.substr(0, command.find(" "));
+            inputCommands.pop();
 
             if (command.compare("HEAD") == 0 || command.compare("GET") == 0)
             {
@@ -171,8 +230,8 @@ int  Webserver::startWebserver()
             }
             else if (command.compare("POST") == 0)
             {
-            /*    correctCommand = true;
-                postCommand = true;*/
+            //    correctCommand = true;
+            //    postCommand = true;
             }
             else
             {
@@ -182,11 +241,41 @@ int  Webserver::startWebserver()
             }
 
         }
-
+        //cout << endl;
         close(socket.clientFD);
     }
     return 0;
 }
+
+//=============================================================================
+// Name:        validateRequestMethod
+//
+// Description: Validate the request method is implemented.
+//
+// Parameters:  I- the request method
+//
+// Return:      0 if successfull. Otherwise -1;
+//=============================================================================
+/*validateRequestMethod(string command)
+{
+    if (command.compare("HEAD") == 0 || command.compare("GET") == 0)
+    {
+        processGetandHeadRequests(socket.clientFD, input, command);
+    }
+    else if (command.compare("POST") == 0)
+    {
+        //    correctCommand = true;
+        //    postCommand = true;
+    }
+    else
+    {
+        if (debugMode)
+            cout << "Sending 501 error" << endl;
+        sendErrorResponse(socket.clientFD, ERROR_501);
+    }
+}
+*/
+
 
 //=============================================================================
 // Name:        validateRequestSyntax
@@ -197,13 +286,23 @@ int  Webserver::startWebserver()
 //
 // Return:      0 if successfull. Otherwise -1;
 //=============================================================================
-int Webserver::validateRequestSyntax(string command)
+int Webserver::validateRequestSyntax(queue<string> inputCommands)
 {
+    // ------------------------------------------------------------------------
+    // Pre-condition: inputCommands cannot be empty.
+    // ------------------------------------------------------------------------
     string temp;
     string filePath;
+    string command;
     string protocolRequest;
     int    numberOfSpace    = 0;
     bool   errorEncountered = false;
+
+    // Get the first command.
+    // We will only have a second command if this is a POST request.
+    // ------------------------------------------------------------------------
+    command = inputCommands.front();
+    inputCommands.pop();
 
     // Requests should be in the following form:
     //     GET /index.html HTTP/1.0
@@ -216,7 +315,7 @@ int Webserver::validateRequestSyntax(string command)
     }
     if (numberOfSpace != 2)
     {
-        errorEncountered    = true;
+        errorEncountered = true;
 
         if (debugMode)
             cout << "Request Syntax Error: Invalid number of arguments" << endl;
@@ -237,7 +336,7 @@ int Webserver::validateRequestSyntax(string command)
         // ------------------------------------------------------------------------
         if (filePath.at(0) != '/')
         {
-            errorEncountered            = true;
+            errorEncountered = true;
 
             if (debugMode)
                 cout << "Request Syntax Error: file path missing leading /" << endl;
@@ -254,7 +353,7 @@ int Webserver::validateRequestSyntax(string command)
         // ------------------------------------------------------------------------
         if (protocolRequest.find("/") == string::npos)
         {
-            errorEncountered     = true;
+            errorEncountered = true;
 
             if (debugMode)
                 cout << "Request Syntax Error: HTTP missing /" << endl;
@@ -307,6 +406,78 @@ int Webserver::validateRequestSyntax(string command)
             {
                 errorEncountered = true;
                 cout << "Request Syntax Error: File extension not supported" << endl;
+            }
+        }
+    }
+
+    // We're done checking the first line.
+    // Now check the second line if this is a POST request.
+    // ------------------------------------------------------------------------
+    if (!errorEncountered)
+    {
+        if (command.find("POST") != string::npos)
+        {
+            // If we have a second line, verify the syntax. Otherwise error an
+            // error.
+            // ----------------------------------------------------------------
+            if (!inputCommands.empty())
+            {
+                command = inputCommands.front();
+                inputCommands.pop();
+
+                // Verify that the syntax is:
+                //     Content-Length: xxx where xxx is the number of bytes.
+                // If it's not in this form, send 400 error.
+                // ------------------------------------------------------------
+                numberOfSpace = 0;
+                for (int i = 0; i < command.length(); i++)
+                {
+                    if (command[i] == ' ')
+                        numberOfSpace++;
+                }
+                if (numberOfSpace != 1)
+                {
+                    errorEncountered = true;
+
+                    if (debugMode)
+                        cout << "Request Syntax Error: Invalid number of arguments"
+                             << " for second post command" << endl;
+                }
+
+                if (!errorEncountered)
+                {
+                    // If "Content-Length: " is present, check that the value
+                    // consists of numbers only.
+                    // --------------------------------------------------------
+                    if (command.find("Content-Length: ") != string::npos)
+                    {
+                        string tempCommand = command.substr(command.find(" ") + 1);
+
+                        if (tempCommand.find_first_not_of("1234567890") != string::npos)
+                        {
+                            errorEncountered = true;
+
+                            if (debugMode)
+                                cout << "Request Syntax Error: Invalid value for "
+                                     << "Content-Length for POST command" << endl;
+                        }
+                    }
+                    else
+                    {
+                        errorEncountered = true;
+
+                        if (debugMode)
+                            cout << "Request Syntax Error: Invalid syntax for second "
+                                 << "POST command" << endl;
+                    }
+                }
+            }
+            else
+            {
+                errorEncountered = true;
+
+                if (debugMode)
+                    cout << "Request Syntax Error: Missing second line for POST requests" << endl;
             }
         }
     }
@@ -370,15 +541,18 @@ void Webserver::processGetandHeadRequests(int clientFD, string command, string m
             // ----------------------------------------------------------------
             buffer = (char*) malloc (sizeof(char)*size);
             bzero(buffer, sizeof(buffer));
-	    numElements = fread (buffer, 1, size, file);
+            numElements = fread (buffer, 1, size, file);
+            buffer[size] = '\0';   // Null terminate char array to avoid garbage character
             fclose(file);
+
             string content(buffer);
-            char temp[512];
-            sprintf(temp, "%d", content.length());
+            char contentLength[512];
+            sprintf(contentLength, "%ld", size);
 
             if (debugMode)
                 cout << "Send 200 OK" << endl;
-            send200OkResponse(clientFD, OK_200, buffer, temp, method);
+            send200OkResponse(clientFD, OK_200, buffer, contentLength, method);
+            free(buffer);
         }
         // File is not readable.
         // --------------------------------------------------------------------
@@ -444,7 +618,6 @@ void Webserver::send200OkResponse(int clientFD,
                                   string contentLength,
                                   string method)
 {
-
     string response = protocol;
     response.append(" ");
     response.append(responseCode);
