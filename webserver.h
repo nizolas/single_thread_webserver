@@ -26,9 +26,11 @@ public:
     Webserver(char const *ip, int portNumber, bool debug);
     int startWebserver();
     int loadConfigFile();
-    void processGetandHeadRequests(int clientFD, std::string command, std::string method);
+    void processGetandHeadRequests(int clientFD, std::string method);
+    void processPostRequests(int clientFD, std::queue<std::string> *inputCommands);
     int validateRequestSyntax(std::queue<std::string> inputCommands);
-    void sendErrorResponse(int clientFD, std::string responseCode);
+    void sendErrorResponse(int clientFD, std::string responseCode, std::string method);
     void send200OkResponse(int clientFD, std::string responseCode, std::string content, std::string contentLength, std::string method);
+    void send201Response(int clientFD, std::string responseCode);
 };
 
