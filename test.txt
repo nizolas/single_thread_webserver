@@ -1,3 +1,44 @@
-Nicolas
-	THANUSON IS BETTER
-of course, this guy!
+GET /index.html HTTP/1.1
+
+POST /thanuson.html HTTP/1.1
+Content-Length: 8
+thanuson
+-------201 Created
+====================need to remove the ! symbol (later on)
+
+POST thanuson2.html HTTP/1.1
+Content-Length: 8
+thanuson
+-------400 Bad Request
+
+POST /thanuson.thanuson HTTP/1.1
+Content-Length: 8
+thanuson
+-------400 Bad Request
+
+POST thanuson2.html HTTP/1.0
+Content-Length: 8
+thanuson
+-------400 Bad Request
+
+POST /thanuson.html HTTP/1.1
+Content-Length: 8
+thanuson
+-------201 Created
+========================Should this happen when the file already exists?
+
+POST /thanuson.html HTTP/1.1
+Content-Length: 8
+than
+=======================Does not send out code any error code when content-length and input length dont match
+=======================Creates a file and makes it empty even though file already exists     ----------> FIXED
+
+POST /than.html HTTP/1.1
+Content-Length: 10
+thanuson
+=======================Does not send out code any error code when content-length and input length dont match size
+=======================File is created when it should not be     ----------> FIXED
+
+
+ISSUES WHEN I USE PASTE
+=======================Sometimes error is invalid number of arguments when it should not be
