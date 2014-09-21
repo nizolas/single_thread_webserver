@@ -603,43 +603,42 @@ void Webserver::processPostRequests(int clientFD,
     string contentToWrite;
     int contentLength;
 
-    ofstream newFile(fullFilePathForRequest.c_str());
-    if (newFile.is_open())
+    // Get the content-length.
+    // --------------------------------------------------------------------
+    command = inputCommand->front();
+    inputCommand->pop();
+    command = command.substr(command.find(" ") + 1);
+    contentLength = atoi(command.c_str());
+
+    // Get the content that needs to be written to the file
+    // --------------------------------------------------------------------
+    while (!inputCommand->empty())
+    {
+        contentToWrite.append(inputCommand->front());
+        inputCommand->pop();
+    }
+    cout << "contentToWrite:" << endl;
+    cout << contentToWrite << "!" << endl;
+    cout << "Content-Length: " << contentLength << "Size: " << contentToWrite.length() << endl;
+    // Technically speaking, content-length should match the size of the
+    // content to be written. For this assignment, there's no mention of
+    // what error code to be sent, we will just output this as a warning
+    // when running in debug mode.
+    // --------------------------------------------------------------------
+    if (contentLength != contentToWrite.length())
     {
         if (debugMode)
-            cout << fullFilePathForRequest << " has been created" << endl;
-
-        // Get the content-length.
-        // --------------------------------------------------------------------
-        command = inputCommand->front();
-        inputCommand->pop();
-        command = command.substr(command.find(" ") + 1);
-        contentLength = atoi(command.c_str());
-
-        // Get the content that needs to be written to the file
-        // --------------------------------------------------------------------
-        while (!inputCommand->empty())
-        {
-            contentToWrite.append(inputCommand->front());
-            inputCommand->pop();
-        }
-
-        cout << "contentToWrite:" << endl;
-        cout << contentToWrite << "!" << endl;
-        cout << "Content-Length: " << contentLength << "Size: " << contentToWrite.length() << endl;
-        // Technically speaking, content-length should match the size of the
-        // content to be written. For this assignment, there's no mention of
-        // what error code to be sent, we will just output this as a warning
-        // when running in debug mode.
-        // --------------------------------------------------------------------
-        if (contentLength != contentToWrite.length())
-        {
+            cout << "Warning: Content-Length is not equal to the number of "
+                 << "bytes that need to be written to the file" << endl;
+    }
+    else
+    {
+	ofstream newFile(fullFilePathForRequest.c_str());
+	if (newFile.is_open())
+	{
             if (debugMode)
-                cout << "Warning: Content-Length is not equal to the number of "
-                     << "bytes that need to be written to the file" << endl;
-        }
-        else
-        {
+                cout << fullFilePathForRequest << " has been created" << endl;
+
             newFile.write(contentToWrite.c_str(), contentToWrite.length());
             newFile.close();
 
