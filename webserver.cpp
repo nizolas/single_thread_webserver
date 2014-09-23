@@ -618,8 +618,8 @@ void Webserver::processPostRequests(int clientFD,
         inputCommand->pop();
     }
     cout << "contentToWrite:" << endl;
-    cout << contentToWrite << "!" << endl;
-    cout << "Content-Length: " << contentLength << "Size: " << contentToWrite.length() << endl;
+    cout << contentToWrite << endl;
+    cout << "Content-Length: " << contentLength << " Size: " << contentToWrite.length() << endl;
     // Technically speaking, content-length should match the size of the
     // content to be written. For this assignment, there's no mention of
     // what error code to be sent, we will just output this as a warning
@@ -633,9 +633,9 @@ void Webserver::processPostRequests(int clientFD,
     }
     else
     {
-	ofstream newFile(fullFilePathForRequest.c_str());
-	if (newFile.is_open())
-	{
+        ofstream newFile(fullFilePathForRequest.c_str());
+        if (newFile.is_open())
+    {
             if (debugMode)
                 cout << fullFilePathForRequest << " has been created" << endl;
 
