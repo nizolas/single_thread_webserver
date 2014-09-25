@@ -1,4 +1,5 @@
 #include <netinet/in.h>
+#include <unistd.h>
 
 class Socket
 {
