@@ -20,6 +20,14 @@
 #include <iostream>
 #include <cstring>
 
+/******************************************************************************
+ * CPS730 - Assignment #1
+ *
+ * Alain LI CHUEN CHEONG
+ * Thanuson SATHASIVAM
+ *
+ *****************************************************************************/
+
 using namespace std;
 
 Socket::Socket()
