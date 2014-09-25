@@ -91,7 +91,7 @@ string getContentType(string fileFormatForRequest, string content)
     }
     else if (fileFormatForRequest.compare("txt") == 0)
     {
-        result = "Content-Type: text/text";
+        result = "Content-Type: text/plain";
     }
 
     // Extract the charset and attach it.
@@ -125,8 +125,9 @@ string getContentType(string fileFormatForRequest, string content)
         }
         result.append("; charset=");
         result.append(content);
-        result.append("\r\n");
     }
+
+    result.append("\r\n");
     return result;
 }
 
