@@ -12,6 +12,14 @@
 #define IP_ADDRESS "141.117.57.46"  // Replace with the correct IP of the host.
 #define CONFIG_FILE "myhttpd.conf"
 
+/******************************************************************************
+ * CPS730 - Assignment #1
+ *
+ * Alain LI CHUEN CHEONG
+ * Thanuson SATHASIVAM
+ *
+ *****************************************************************************/
+
 using namespace std;
 
 //=============================================================================
@@ -276,8 +284,6 @@ int  Webserver::startWebserver()
             else if (method.compare("POST") == 0)
             {
                 processPostRequests(socket.clientFD, &inputCommands);
-            //    correctCommand = true;
-            //    postCommand = true;
             }
             else
             {
@@ -556,14 +562,14 @@ void Webserver::processGetandHeadRequests(int clientFD, string method)
             bzero(buffer, sizeof(buffer));
             numElements = fread (buffer, 1, size, file);
             buffer[size] = '\0';   // Null terminate char array to avoid garbage character
-            fclose(file);
 
             string content(buffer);
             char contentLength[512];
             sprintf(contentLength, "%ld", size);
             if (debugMode)
                 cout << "Sending 200 OK" << endl << endl;
-            send200OkResponse(clientFD, OK_200, buffer, contentLength, method);
+            send200OkResponse(clientFD, OK_200, content, contentLength, method);
+            fclose(file);
             free(buffer);
         }
         // File is not readable.
