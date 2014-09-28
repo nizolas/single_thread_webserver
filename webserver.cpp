@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include "webserver.h"
+#include <pthread.h>
 
 #define IP_ADDRESS "141.117.57.46"  // Replace with the correct IP of the host.
 #define CONFIG_FILE "myhttpd.conf"
@@ -185,6 +186,26 @@ int  Webserver::startWebserver()
         cout << "Server is ready and listening for connections" << endl;
     }
 
+	pthread_t threads[5];
+	int rc;
+	int i;
+
+	for(i=0;i<5;i++)
+	{
+      		rc = pthread_create(&threads[i], NULL, acceptRequest, (void *)(socket));
+  		if (rc)
+		{
+        		cout << "Error:unable to create thread," << rc << endl;
+        		exit(-1);
+		}
+	}
+	pthread_exit(NULL);
+}
+
+void* Webserver::acceptRequest(void * socketPointer)
+{
+	socket
+	//Socket socket = *(Socket*)socketPointer);
     // Keep accepting requests from remote clients.
     // ------------------------------------------------------------------------
     while ((socket.clientFD = accept(socket.serverFD, (struct sockaddr *) &(socket.client), (socklen_t *) &(socket.clientlen))) > 0)
@@ -293,7 +314,8 @@ int  Webserver::startWebserver()
         }
         close(socket.clientFD);
     }
-    return 0;
+    //return 0;
+	pthread_exit(NULL);
 }
 
 
@@ -929,5 +951,5 @@ int main(int argc, char *argv[])
     }
 
     Webserver server(IP_ADDRESS, port, debugMode);
-    server.startWebserver();
+server.startWebserver();
 }
