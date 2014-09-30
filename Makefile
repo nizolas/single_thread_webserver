@@ -1,10 +1,10 @@
 all: webserver clean
 
 webserver: webserver.o socket.o
-		g++ webserver.o socket.o -o webserver
+		g++ -lpthread webserver.o socket.o -o webserver
 
 webserver.o: webserver.cpp
-		g++ -c webserver.cpp
+		g++ -c -lpthread webserver.cpp
 
 socket.o: socket.cpp
 		g++ -c socket.cpp
