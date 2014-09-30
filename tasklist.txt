@@ -1,3 +1,10 @@
-- Add implementation of POST  ---------> DONE
-- Get POST to write content to file   ---------> DONE
-- Add html code to error message to be displayed properly on browser (Optional)    ---------> DONE
+Move each tasklist to the done section when it is completed.
+
+Pending
+-----------------------------------
+- Loading config file with new configuration - POOL and QUEUE
+- Multi-threaded capabilities
+- Semaphores to protect critical area of code
+
+Done
+-----------------------------------
