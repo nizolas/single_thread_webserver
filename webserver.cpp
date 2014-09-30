@@ -145,6 +145,22 @@ void extractCommandForBrowserRequest(string inputBuffer, queue<string> *inputCom
     inputCommands->push(inputBuffer);
 }
 
+void *worker_thread(void *arg)
+{
+    struct worker_arg {
+        Socket *socket;
+        Webserver *webserver;
+    } *worker_context;
+
+    worker_context = (struct worker_arg*) arg;
+
+    cout << "A new worker thread has been spawned" << endl;
+    worker_context->webserver->acceptRequest(worker_context->socket);
+
+    pthread_exit(NULL);
+}
+
+
 // Constructor
 Webserver::Webserver(char const *ip, int portNumber, bool debug)
 {
@@ -164,6 +180,11 @@ Webserver::Webserver(char const *ip, int portNumber, bool debug)
 //=============================================================================
 int  Webserver::startWebserver()
 {
+    struct worker_arg {
+        Socket *socket;
+        Webserver *webserver;
+    } worker_context;
+
     // Queue to handle inputBuffer in case of multiple buffer being received.
     // For example, post request will send
     // - POST /file.html HTTP/1.0
@@ -186,32 +207,40 @@ int  Webserver::startWebserver()
         cout << "Server is ready and listening for connections" << endl;
     }
 
-	pthread_t threads[5];
-	int rc;
-	int i;
 
-	for(i=0;i<5;i++)
-	{
-      		rc = pthread_create(&threads[i], NULL, acceptRequest, (void *)(socket));
-  		if (rc)
-		{
-        		cout << "Error:unable to create thread," << rc << endl;
-        		exit(-1);
-		}
-	}
-	pthread_exit(NULL);
+    pthread_t threads[3];
+    worker_context.socket = &socket;
+    worker_context.webserver = this;
+
+    int rc;
+    for(int i = 0; i<1; i++)
+    {
+        rc = pthread_create(&threads[i], NULL, &worker_thread, (void *) &socket);
+        if (rc)
+        {
+            cout << "Error:unable to create thread," << rc << endl;
+            exit(-1);
+        }
+    }
+    pthread_exit(NULL);
 }
 
-void* Webserver::acceptRequest(void * socketPointer)
+
+
+
+
+void Webserver::acceptRequest(Socket *socket)
 {
-	socket
-	//Socket socket = *(Socket*)socketPointer);
+    cout << "test" << endl;
+    cout << socket->serverFD <<endl;
+    cout << socket->clientFD <<endl;
     // Keep accepting requests from remote clients.
     // ------------------------------------------------------------------------
-    while ((socket.clientFD = accept(socket.serverFD, (struct sockaddr *) &(socket.client), (socklen_t *) &(socket.clientlen))) > 0)
-    {
+//    while ((socket->clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen))) > 0)
+//    {
+//    (socket->clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen)));
         // Do whatever a web server does.
-        queue<string> inputCommands;
+/*        queue<string> inputCommands;
         int  byteCount;
         char buffer[1024];
         string method;
@@ -229,7 +258,7 @@ void* Webserver::acceptRequest(void * socketPointer)
             bzero(buffer, sizeof(buffer));
             // Receive a request from the remote client and process it accordingly.
             // --------------------------------------------------------------------
-            byteCount = recv(socket.clientFD, buffer, sizeof(buffer), 0);
+            byteCount = recv(socket->clientFD, buffer, sizeof(buffer), 0);
             input.assign(buffer);
 
             // If first buffer receive only contains CRLF, ignore and keep
@@ -288,7 +317,7 @@ void* Webserver::acceptRequest(void * socketPointer)
         {
             if (debugMode)
                 cout << "Sending 400 error" << endl << endl;
-            sendErrorResponse(socket.clientFD, ERROR_400, method);
+            sendErrorResponse(socket->clientFD, ERROR_400, method);
         }
         else
         {
@@ -299,23 +328,21 @@ void* Webserver::acceptRequest(void * socketPointer)
 
             if (method.compare("HEAD") == 0 || method.compare("GET") == 0)
             {
-                processGetandHeadRequests(socket.clientFD, method);
+                processGetandHeadRequests(socket->clientFD, method);
             }
             else if (method.compare("POST") == 0)
             {
-                processPostRequests(socket.clientFD, &inputCommands);
+                processPostRequests(socket->clientFD, &inputCommands);
             }
             else
             {
                 if (debugMode)
                     cout << "Sending 501 error" << endl << endl;
-                sendErrorResponse(socket.clientFD, ERROR_501, method);
+                sendErrorResponse(socket->clientFD, ERROR_501, method);
             }
         }
-        close(socket.clientFD);
-    }
-    //return 0;
-	pthread_exit(NULL);
+        close(socket->clientFD);*/
+//    }
 }
 
 
@@ -951,5 +978,5 @@ int main(int argc, char *argv[])
     }
 
     Webserver server(IP_ADDRESS, port, debugMode);
-server.startWebserver();
+    server.startWebserver();
 }

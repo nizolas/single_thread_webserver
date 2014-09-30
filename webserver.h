@@ -25,7 +25,7 @@ private:
 public:
     Webserver(char const *ip, int portNumber, bool debug);
     int startWebserver();
-    void* acceptRequest(void *socketPointer);
+    void acceptRequest(Socket *socket);
     int loadConfigFile();
     void processGetandHeadRequests(int clientFD, std::string method);
     void processPostRequests(int clientFD, std::queue<std::string> *inputCommands);
