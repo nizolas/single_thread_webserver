@@ -21,7 +21,7 @@
  *****************************************************************************/
 
 using namespace std;
-
+int pool;
 //=============================================================================
 // Name:        getFormattedDate
 //
@@ -153,13 +153,12 @@ void *worker_thread(void *arg)
     } *worker_context;
 
     worker_context = (struct worker_arg*) arg;
-
     cout << "A new worker thread has been spawned" << endl;
     worker_context->webserver->acceptRequest(worker_context->socket);
-
+    pool--;
+    cout << "pool size: " << pool << endl;
     pthread_exit(NULL);
 }
-
 
 // Constructor
 Webserver::Webserver(char const *ip, int portNumber, bool debug)
@@ -207,40 +206,44 @@ int  Webserver::startWebserver()
         cout << "Server is ready and listening for connections" << endl;
     }
 
-
-    pthread_t threads[3];
+    pthread_t threads[5];
     worker_context.socket = &socket;
     worker_context.webserver = this;
 
     int rc;
-    for(int i = 0; i<1; i++)
+    pool =0;
+    //for(int i=0; i<5; i++)
+    while ((socket.clientFD = accept(socket.serverFD, (struct sockaddr *) &(socket.client), (socklen_t *) &(socket.clientlen))) > 0)
     {
-        rc = pthread_create(&threads[i], NULL, &worker_thread, (void *) &socket);
-        if (rc)
+        if(pool < 5)
         {
-            cout << "Error:unable to create thread," << rc << endl;
-            exit(-1);
+            rc = pthread_create(&threads[pool], NULL, &worker_thread, (void *) &worker_context);
+            pool++;
+            if (rc)
+            {
+                cout << "ERROR: unable to create thread, " << rc << endl;
+                exit(-1);
+            }
         }
+
     }
     pthread_exit(NULL);
 }
 
-
-
-
-
-void Webserver::acceptRequest(Socket *socket)
-{
-    cout << "test" << endl;
-    cout << socket->serverFD <<endl;
-    cout << socket->clientFD <<endl;
     // Keep accepting requests from remote clients.
     // ------------------------------------------------------------------------
-//    while ((socket->clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen))) > 0)
-//    {
-//    (socket->clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen)));
+void Webserver::acceptRequest(Socket *socket)
+{
+    cout << socket << endl;
+    cout << socket->serverFD << endl;
+    cout << socket->clientFD << endl;
+    string protocol2 = protocol;
+        cout << protocol2 << endl;
+    //(socket->clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen)));
+        cout << protocol2 << endl;
+        cout <<extensionsAllowed[1] << endl;
         // Do whatever a web server does.
-/*        queue<string> inputCommands;
+        queue<string> inputCommands;
         int  byteCount;
         char buffer[1024];
         string method;
@@ -253,8 +256,8 @@ void Webserver::acceptRequest(Socket *socket)
         cout << "Connection Established with remote client" << endl;
         cout << "Client Request:" << endl;
 
-        while (!requestEnded)
-        {
+        //while (!requestEnded)
+        //{
             bzero(buffer, sizeof(buffer));
             // Receive a request from the remote client and process it accordingly.
             // --------------------------------------------------------------------
@@ -305,7 +308,7 @@ void Webserver::acceptRequest(Socket *socket)
                     requestEnded = true;
                 }
             }
-        }
+        //}
 
         method = inputCommands.front();
         method = method.substr(0, method.find(" "));
@@ -341,8 +344,7 @@ void Webserver::acceptRequest(Socket *socket)
                 sendErrorResponse(socket->clientFD, ERROR_501, method);
             }
         }
-        close(socket->clientFD);*/
-//    }
+        close(socket->clientFD);
 }
 
 
