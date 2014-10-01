@@ -8,14 +8,13 @@
 #include <iostream>
 #include "webserver.h"
 #include <pthread.h>
-//#include "globsem.h"
 #include <semaphore.h>
 
 #define IP_ADDRESS "141.117.57.46"  // Replace with the correct IP of the host.
 #define CONFIG_FILE "myhttpd.conf"
 
 /******************************************************************************
- * CPS730 - Assignment #1
+ * CPS730 - Assignment #2
  *
  * Alain LI CHUEN CHEONG
  * Thanuson SATHASIVAM
@@ -23,9 +22,10 @@
  *****************************************************************************/
 
 using namespace std;
+
 //global semaphore
-int semid;
 sem_t mySemaphore;
+
 //=============================================================================
 // Name:        getFormattedDate
 //
@@ -161,59 +161,28 @@ void *worker_thread(void *arg)
 
     while(true)
     {
-            // Semaphore check
-            sem_wait(&mySemaphore);
+        bool hasSomethingToService = false;
+
+        // Critical area for semaphore.
+        // --------------------------------------------------------------------
+        sem_wait(&mySemaphore);
         if (!queueConnection->empty())
         {
-
-            //down(semid);
             clientFD = queueConnection->front();
-            cout << "queue size: " << queueConnection->size() << endl;
             queueConnection->pop();
+            hasSomethingToService = true;
+            cout << "Servicing client file descriptor: " << clientFD << endl;
+        }
+        sem_post(&mySemaphore);
+
+
+        if (hasSomethingToService)
+        {
             webserver->acceptRequest(clientFD);
-
-        queue<string> inputCommands;
-        int  byteCount;
-        char buffer[1024];
-        bool isBrowserRequest           = false;
-
-        cout << "Connection Established with remote client" << endl;
-        cout << "Client Request:" << endl;
-
-            bzero(buffer, sizeof(buffer));
-            // Receive a request from the remote client and process it accordingly.
-            // --------------------------------------------------------------------
-            byteCount = recv(clientFD, buffer, sizeof(buffer), 0);
-            cout << buffer << endl;
-            //close(clientFD);
-        }
-            //up(semid);
-            sem_post(&mySemaphore);
-    }
-}
-
-/*void *queueHandler_thread(void *arg)
-{
-    struct worker_queue_arg *context = (struct worker_queue_arg*) arg;
-    Socket *socket = context->socket;
-    queue<int> *queueConnection = context->queueConnection;
-    int clientFD;
-
-    cout << "spawned" << endl;
-    while ((clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen))) > 0)
-    {
-        if (queueConnection->size() < 5)
-        {
-            cout << "Connection accepted - client socket descriptor: " << clientFD << endl;
-            queueConnection->push(clientFD);
-        }
-        else
-        {
-            cout << "Number of connection in queue execeeded max number of 5" << endl;
             close(clientFD);
         }
     }
-}*/
+}
 
 
 // Constructor
@@ -266,8 +235,10 @@ int  Webserver::startWebserver()
     worker_procReq.queueConnection = &queueConnection;
     worker_procReq.webserver = this;
 
-    pthread_t requestThread[5];
-    for (int i = 0; i < 5; i++)
+    // Spawn the threads based on Pool size.
+    // ------------------------------------------------------------------------
+    pthread_t requestThread[poolSize];
+    for (int i = 0; i < poolSize; i++)
     {
         rc = pthread_create(&requestThread[i], NULL, &worker_thread, (void *) &worker_procReq);
         if (rc)
@@ -277,167 +248,126 @@ int  Webserver::startWebserver()
         }
     }
 
-
     while ((clientFD = accept(socket.serverFD, (struct sockaddr *) &(socket.client), (socklen_t *) &(socket.clientlen))) > 0)
     {
-        if (queueConnection.size() < 5)
+        if (queueConnection.size() < queueSize)
         {
-            //sem_wait(&mySemaphore);
-        //down(semid);
-        //down()
             cout << "Connection accepted - client socket descriptor: " << clientFD << endl;
             queueConnection.push(clientFD);
-            // up()
-           // cout << "going to up " << semid << endl;
-            //up(sem_mutex);
-            //up(semid);
-            //sem_post(&mySemaphore);
-            //cout << semid << endl;
         }
         else
         {
-            cout << "Number of connection in queue execeeded max number of 5" << endl;
+            cout << "Number of connection in queue execeeded max number of " << queueSize<< endl;
             close(clientFD);
         }
-
     }
-
-
-
-/*    rc = pthread_create(&queueThread, NULL, &queueHandler_thread, (void *) &worker_queue);
-    if (rc)
-    {
-        cerr << "ERROR! Unable to create worker_queue thread: "<< rc << endl;
-        return -1;
-    }
-
-    while (true)
-    {
-        if (threadCount < 5)
-        {
-            worker_procReq.clientFD = queueConnection.front();
-            worker_procReq.threadCount = threadCount;
-            worker_procReq.webserver = this;
-
-            rc = pthread_create(&queueThread, NULL, &queueHandler_thread, (void *) &worker_queue);
-            if (rc)
-    {
-        cerr << "ERROR! Unable to create worker_queue thread: "<< rc << endl;
-        return -1;
-    }
-
-        }
-    }*/
-
 }
 
 
 void Webserver::acceptRequest(int clientFD)
 {
+    // Do whatever a web server does.
+    queue<string> inputCommands;
+    int  byteCount;
+    char buffer[1024];
+    string method;
+    string input;
 
-        // Do whatever a web server does.
-/*        queue<string> inputCommands;
-        int  byteCount;
-        char buffer[1024];
-        string method;
-        string input;
+    bool requestEnded               = false;
+    bool previousBufferWasEmptyLine = true;
+    bool isBrowserRequest           = false;
 
-        bool requestEnded               = false;
-        bool previousBufferWasEmptyLine = true;
-        bool isBrowserRequest           = false;
+    cout << "Connection Established with remote client" << endl;
+    cout << "Client Request:" << endl;
 
-        cout << "Connection Established with remote client" << endl;
-        cout << "Client Request:" << endl;
+    while (!requestEnded)
+    {
+        bzero(buffer, sizeof(buffer));
+        // Receive a request from the remote client and process it accordingly.
+        // --------------------------------------------------------------------
+        byteCount = recv(clientFD, buffer, sizeof(buffer), 0);
+        input.assign(buffer);
 
-        while (!requestEnded)
+        // If first buffer receive only contains CRLF, ignore and keep
+        // waiting for
+        // There are 2 cases to consider here.
+        // - For a request from a browser, the whole request will be send
+        //   one buffer. So to know, if we have received the whole buffer,
+        //   we will receive CRLFCRLF at the end of the buffer.
+        // - For telnet request, the request will be sent in different
+        //   receive buffer. So check if the first buffer has receive some
+        //   content immediately followed by a buffer containing only CRLF.
+        // ----------------------------------------------------------------
+        if (input.find("\r\n\r\n") != string::npos)
         {
-            bzero(buffer, sizeof(buffer));
-            // Receive a request from the remote client and process it accordingly.
-            // --------------------------------------------------------------------
-            byteCount = recv(socket->clientFD, buffer, sizeof(buffer), 0);
-            input.assign(buffer);
+            requestEnded = true;
+            isBrowserRequest = true;
+            extractCommandForBrowserRequest(input, &inputCommands);
+            cout << input << endl;
+        }
+        // Telnet commands.
+        // ----------------------------------------------------------------
+        else
+        {
+            // The buffer contains a request.
+            // Set previousBufferWasEmptyLine to false and we can exit the
+            // inner loop if an empty line is sent.
+            // ------------------------------------------------------------
+            if (input.compare("\r\n") != 0)
+            {
+                // Get rid of CRLF being set by telnet session.
+                // --------------------------------------------------------
+                input = input.substr(0, input.length() - 2);
+                cout << input << endl;
 
-            // If first buffer receive only contains CRLF, ignore and keep
-            // waiting for
-            // There are 2 cases to consider here.
-            // - For a request from a browser, the whole request will be send
-            //   one buffer. So to know, if we have received the whole buffer,
-            //   we will receive CRLFCRLF at the end of the buffer.
-            // - For telnet request, the request will be sent in different
-            //   receive buffer. So check if the first buffer has receive some
-            //   content immediately followed by a buffer containing only CRLF.
-            // ----------------------------------------------------------------
-            if (input.find("\r\n\r\n") != string::npos)
+                inputCommands.push(input);
+                previousBufferWasEmptyLine = false;
+            }
+            // The buffer contains an empty line.
+            // Set requestEnded to true ONLY if we have received a non
+            // empty buffer before.
+            // ------------------------------------------------------------
+            else if (!previousBufferWasEmptyLine)
             {
                 requestEnded = true;
-                isBrowserRequest = true;
-                extractCommandForBrowserRequest(input, &inputCommands);
-                cout << input << endl;
-            }
-            // Telnet commands.
-            // ----------------------------------------------------------------
-            else
-            {
-                // The buffer contains a request.
-                // Set previousBufferWasEmptyLine to false and we can exit the
-                // inner loop if an empty line is sent.
-                // ------------------------------------------------------------
-                if (input.compare("\r\n") != 0)
-                {
-                    // Get rid of CRLF being set by telnet session.
-                    // --------------------------------------------------------
-                    input = input.substr(0, input.length() - 2);
-                    cout << input << endl;
-
-                    inputCommands.push(input);
-                    previousBufferWasEmptyLine = false;
-                }
-                // The buffer contains an empty line.
-                // Set requestEnded to true ONLY if we have received a non
-                // empty buffer before.
-                // ------------------------------------------------------------
-                else if (!previousBufferWasEmptyLine)
-                {
-                    requestEnded = true;
-                }
             }
         }
+    }
 
-        method = inputCommands.front();
-        method = method.substr(0, method.find(" "));
+    method = inputCommands.front();
+    method = method.substr(0, method.find(" "));
 
-        // Validate the syntax.
-        // If it's incorrect, it will send 400 error.
-        // --------------------------------------------------------------------
-        if (validateRequestSyntax(inputCommands) < 0)
+    // Validate the syntax.
+    // If it's incorrect, it will send 400 error.
+    // --------------------------------------------------------------------
+    if (validateRequestSyntax(inputCommands) < 0)
+    {
+        if (debugMode)
+            cout << "Sending 400 error" << endl << endl;
+        sendErrorResponse(clientFD, ERROR_400, method);
+    }
+    else
+    {
+        // Syntax is correct, try processing the request.
+        // First verify that the method is implemented.
+        // ----------------------------------------------------------------
+        inputCommands.pop();
+
+        if (method.compare("HEAD") == 0 || method.compare("GET") == 0)
         {
-            if (debugMode)
-                cout << "Sending 400 error" << endl << endl;
-            sendErrorResponse(socket->clientFD, ERROR_400, method);
+            processGetandHeadRequests(clientFD, method);
+        }
+        else if (method.compare("POST") == 0)
+        {
+            processPostRequests(clientFD, &inputCommands);
         }
         else
         {
-            // Syntax is correct, try processing the request.
-            // First verify that the method is implemented.
-            // ----------------------------------------------------------------
-            inputCommands.pop();
-
-            if (method.compare("HEAD") == 0 || method.compare("GET") == 0)
-            {
-                processGetandHeadRequests(socket->clientFD, method);
-            }
-            else if (method.compare("POST") == 0)
-            {
-                processPostRequests(socket->clientFD, &inputCommands);
-            }
-            else
-            {
-                if (debugMode)
-                    cout << "Sending 501 error" << endl << endl;
-                sendErrorResponse(socket->clientFD, ERROR_501, method);
-            }
-        }*/
-//    }
+            if (debugMode)
+                cout << "Sending 501 error" << endl << endl;
+            sendErrorResponse(clientFD, ERROR_501, method);
+        }
+    }
 }
 
 
@@ -931,7 +861,7 @@ void Webserver::send201Response(int clientFD, string responseCode)
 //=============================================================================
 int Webserver::loadConfigFile()
 {
-    string pathConfigFile, line;
+    string pathConfigFile, line, parser;
 
     // Get the complete path to the config file.
     // ------------------------------------------------------------------------
@@ -1005,10 +935,33 @@ int Webserver::loadConfigFile()
             cout << "File extentions allowed: " << endl;
             for(int i=0; i< extensionsAllowed.size();i++)
             {
-                cout << extensionsAllowed[i] << endl;
+                cout << extensionsAllowed[i] << " ";
             }
             cout << endl;
         }
+
+        // Read third line of the config file.
+        // The third line will give the number of threads to be used.
+        //
+        // NOTE: We are not doing error checking for the config file. We are
+        //       assuming it is the proper format and just extracting.
+        // --------------------------------------------------------------------
+        getline(configFile, line);
+        parser = line.substr(line.find(" ") + 1);
+        cout << "POOL: " << parser << endl;
+        poolSize = atoi(parser.c_str());
+
+        // Read fourth line of the config file.
+        // The fourth line will give the queue size for requests.
+        //
+        // NOTE: We are not doing error checking for the config file. We are
+        //       assuming it is the proper format and just extracting.
+        // --------------------------------------------------------------------
+        getline(configFile, line);
+        parser = line.substr(line.find(" ") + 1);
+        cout << "QUEUE: " << parser << endl;
+        queueSize = atoi(parser.c_str());
+
     }
     else
     {
@@ -1031,7 +984,7 @@ int main(int argc, char *argv[])
     bool debugMode = false;
     //semid = (int) malloc (sizeof(int));
     //semid = createSem(); 
-    sem_init(&mySemaphore, 0, 5);
+    sem_init(&mySemaphore, 0, 1);
 
     //sem_mutex = (int) malloc (sizeof(int));
     //sem_mutex = createSem();
