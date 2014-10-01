@@ -25,7 +25,7 @@ private:
 public:
     Webserver(char const *ip, int portNumber, bool debug);
     int startWebserver();
-    void acceptRequest(Socket *socket);
+    void acceptRequest(int clientFD);
     int loadConfigFile();
     void processGetandHeadRequests(int clientFD, std::string method);
     void processPostRequests(int clientFD, std::queue<std::string> *inputCommands);
@@ -34,4 +34,15 @@ public:
     void send200OkResponse(int clientFD, std::string responseCode, std::string content, std::string contentLength, std::string method);
     void send201Response(int clientFD, std::string responseCode);
 };
+
+struct worker_queue_arg {
+    Socket *socket;
+    std::queue<int> *queueConnection;
+};
+
+struct worker_procReq_arg {
+    std::queue<int> *queueConnection;
+    Webserver *webserver;
+};
+
 

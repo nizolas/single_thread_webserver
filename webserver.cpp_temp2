@@ -147,52 +147,20 @@ void extractCommandForBrowserRequest(string inputBuffer, queue<string> *inputCom
 
 void *worker_thread(void *arg)
 {
-    struct worker_procReq_arg *worker_context = (struct worker_procReq_arg*) arg;
+    struct worker_arg {
+        int clientFD;
+        int *threadCount;
+        Webserver *webserver;
+    } ;
 
-    queue<int> *queueConnection = worker_context->queueConnection;
-    Webserver *webserver = worker_context->webserver;
-    int clientFD;
+    struct worker_arg *worker_context = (struct worker_arg*) arg;
 
-    cout << "A new worker thread has been spawned." << endl;
+    cout << "A new worker thread has been spawned. Thread count is: " << *(worker_context->threadCount) << endl;
+    //worker_context->webserver->acceptRequest(worker_context->socket);
 
-    while(true)
-    {
-        if (!queueConnection->empty())
-        {
-            // Semaphore check
-            //down();
-            clientFD = queueConnection->front();
-            queueConnection->pop();
-            //up();
-            webserver->acceptRequest(clientFD);
-
-            close(clientFD);
-        }
-    }
+    cout << "Thread is done. Thread count is: " << --(*(worker_context->threadCount)) << endl;
+    pthread_exit(NULL);
 }
-
-/*void *queueHandler_thread(void *arg)
-{
-    struct worker_queue_arg *context = (struct worker_queue_arg*) arg;
-    Socket *socket = context->socket;
-    queue<int> *queueConnection = context->queueConnection;
-    int clientFD;
-
-    cout << "spawned" << endl;
-    while ((clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen))) > 0)
-    {
-        if (queueConnection->size() < 5)
-        {
-            cout << "Connection accepted - client socket descriptor: " << clientFD << endl;
-            queueConnection->push(clientFD);
-        }
-        else
-        {
-            cout << "Number of connection in queue execeeded max number of 5" << endl;
-            close(clientFD);
-        }
-    }
-}*/
 
 
 // Constructor
@@ -214,11 +182,16 @@ Webserver::Webserver(char const *ip, int portNumber, bool debug)
 //=============================================================================
 int  Webserver::startWebserver()
 {
-    queue<int> queueConnection;
-    int clientFD;
-    int rc;
+    struct worker_arg {
+        int clientFD;
+        int *threadCount;
+        Webserver *webserver;
 
-    struct worker_procReq_arg worker_procReq;
+    } worker_context;
+
+    int client;
+    int threadCount = 0;
+    queue<int> queueConnection;
 
     // Queue to handle inputBuffer in case of multiple buffer being received.
     // For example, post request will send
@@ -242,72 +215,50 @@ int  Webserver::startWebserver()
         cout << "Server is ready and listening for connections" << endl;
     }
 
-    worker_procReq.queueConnection = &queueConnection;
-    worker_procReq.webserver = this;
-
-    pthread_t requestThread[5];
-    for (int i = 0; i < 5; i++)
+    while ((client = accept(socket.serverFD, (struct sockaddr *) &(socket.client), (socklen_t *) &(socket.clientlen))) > 0)
     {
-        rc = pthread_create(&requestThread[i], NULL, &worker_thread, (void *) &worker_procReq);
-        if (rc)
-        {
-            cerr << "ERROR! Unable to create worker_queue thread: "<< rc << endl;
-            return -1;
-        }
-    }
+        int rc;
+        pthread_t thread;
+        worker_context.clientFD = client;
+        worker_context.webserver = this;
+        worker_context.threadCount = &threadCount;
 
-    pthread_t queueThread;
-
-    while ((clientFD = accept(socket.serverFD, (struct sockaddr *) &(socket.client), (socklen_t *) &(socket.clientlen))) > 0)
-    {
-        //down()
-        if (queueConnection.size() < 5)
+        if (threadCount < 5)
         {
-            cout << "Connection accepted - client socket descriptor: " << clientFD << endl;
-            queueConnection.push(clientFD);
-            // up()
+            rc = pthread_create(&thread, NULL, &worker_thread, (void *) &worker_context);
+            if (rc == 0)
+            {
+                threadCount++;
+            }
         }
         else
         {
-            cout << "Number of connection in queue execeeded max number of 5" << endl;
-            close(clientFD);
+            if (queueConnection.size() < 5)
+            {
+                queueConnection.push(client);
+            }
+            else
+            {
+                close(client);
+            }
         }
-
     }
-
-
-
-/*    rc = pthread_create(&queueThread, NULL, &queueHandler_thread, (void *) &worker_queue);
-    if (rc)
-    {
-        cerr << "ERROR! Unable to create worker_queue thread: "<< rc << endl;
-        return -1;
-    }
-
-    while (true)
-    {
-        if (threadCount < 5)
-        {
-            worker_procReq.clientFD = queueConnection.front();
-            worker_procReq.threadCount = threadCount;
-            worker_procReq.webserver = this;
-
-            rc = pthread_create(&queueThread, NULL, &queueHandler_thread, (void *) &worker_queue);
-            if (rc)
-    {
-        cerr << "ERROR! Unable to create worker_queue thread: "<< rc << endl;
-        return -1;
-    }
-
-        }
-    }*/
-
 }
 
 
-void Webserver::acceptRequest(int clientFD)
-{
 
+
+
+void Webserver::acceptRequest(Socket *socket)
+{
+    cout << "test" << endl;
+    cout << socket->serverFD <<endl;
+    cout << socket->clientFD <<endl;
+    // Keep accepting requests from remote clients.
+    // ------------------------------------------------------------------------
+//    while ((socket->clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen))) > 0)
+//    {
+//    (socket->clientFD = accept(socket->serverFD, (struct sockaddr *) &(socket->client), (socklen_t *) &(socket->clientlen)));
         // Do whatever a web server does.
 /*        queue<string> inputCommands;
         int  byteCount;
@@ -409,7 +360,8 @@ void Webserver::acceptRequest(int clientFD)
                     cout << "Sending 501 error" << endl << endl;
                 sendErrorResponse(socket->clientFD, ERROR_501, method);
             }
-        }*/
+        }
+        close(socket->clientFD);*/
 //    }
 }
 
