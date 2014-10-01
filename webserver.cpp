@@ -8,6 +8,8 @@
 #include <iostream>
 #include "webserver.h"
 #include <pthread.h>
+//#include "globsem.h"
+#include <semaphore.h>
 
 #define IP_ADDRESS "141.117.57.46"  // Replace with the correct IP of the host.
 #define CONFIG_FILE "myhttpd.conf"
@@ -21,7 +23,9 @@
  *****************************************************************************/
 
 using namespace std;
-
+//global semaphore
+int semid;
+sem_t mySemaphore;
 //=============================================================================
 // Name:        getFormattedDate
 //
@@ -157,17 +161,34 @@ void *worker_thread(void *arg)
 
     while(true)
     {
+            // Semaphore check
+            sem_wait(&mySemaphore);
         if (!queueConnection->empty())
         {
-            // Semaphore check
-            //down();
+
+            //down(semid);
             clientFD = queueConnection->front();
+            cout << "queue size: " << queueConnection->size() << endl;
             queueConnection->pop();
-            //up();
             webserver->acceptRequest(clientFD);
 
-            close(clientFD);
+        queue<string> inputCommands;
+        int  byteCount;
+        char buffer[1024];
+        bool isBrowserRequest           = false;
+
+        cout << "Connection Established with remote client" << endl;
+        cout << "Client Request:" << endl;
+
+            bzero(buffer, sizeof(buffer));
+            // Receive a request from the remote client and process it accordingly.
+            // --------------------------------------------------------------------
+            byteCount = recv(clientFD, buffer, sizeof(buffer), 0);
+            cout << buffer << endl;
+            //close(clientFD);
         }
+            //up(semid);
+            sem_post(&mySemaphore);
     }
 }
 
@@ -256,16 +277,22 @@ int  Webserver::startWebserver()
         }
     }
 
-    pthread_t queueThread;
 
     while ((clientFD = accept(socket.serverFD, (struct sockaddr *) &(socket.client), (socklen_t *) &(socket.clientlen))) > 0)
     {
-        //down()
         if (queueConnection.size() < 5)
         {
+            //sem_wait(&mySemaphore);
+        //down(semid);
+        //down()
             cout << "Connection accepted - client socket descriptor: " << clientFD << endl;
             queueConnection.push(clientFD);
             // up()
+           // cout << "going to up " << semid << endl;
+            //up(sem_mutex);
+            //up(semid);
+            //sem_post(&mySemaphore);
+            //cout << semid << endl;
         }
         else
         {
@@ -1002,7 +1029,13 @@ int main(int argc, char *argv[])
 {
     int port;
     bool debugMode = false;
+    //semid = (int) malloc (sizeof(int));
+    //semid = createSem(); 
+    sem_init(&mySemaphore, 0, 5);
 
+    //sem_mutex = (int) malloc (sizeof(int));
+    //sem_mutex = createSem();
+    //createSem();
     if (argc < 3 || argc > 4)
     {
         showUsage(argv[0]);
