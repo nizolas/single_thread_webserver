@@ -13,9 +13,11 @@
 class Webserver
 {
 private:
-    char const *ipAddress;
     int port;
+    int poolSize;
+    int queueSize;
     bool debugMode;
+    char const *ipAddress;
     std::vector<std::string> extensionsAllowed;
     std::string root;
     std::string protocol;

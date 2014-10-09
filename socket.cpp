@@ -21,7 +21,7 @@
 #include <cstring>
 
 /******************************************************************************
- * CPS730 - Assignment #1
+ * CPS730 - Assignment #2
  *
  * Alain LI CHUEN CHEONG
  * Thanuson SATHASIVAM

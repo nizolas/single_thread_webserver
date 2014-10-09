@@ -437,7 +437,7 @@ int Webserver::validateRequestSyntax(queue<string> inputCommands)
         }
     }
 
-    if (!errorEncountered)
+/*    if (!errorEncountered)
     {
         // Parse the protocol
         // ------------------------------------------------------------------------
@@ -464,7 +464,7 @@ int Webserver::validateRequestSyntax(queue<string> inputCommands)
                     cout << "Request Syntax Error: Protocol not compatible" << endl;
             }
         }
-    }
+    }*/
 
     if (!errorEncountered)
     {
